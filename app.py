@@ -12,6 +12,13 @@ st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="w
 
 st.markdown("""
 <style>
+    /* 상단 우측 메뉴(Fork, GitHub 아이콘 등) 숨기기 (왼쪽 ☰ 메뉴는 유지) */
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    .stAppToolbar {display: none !important;}
+    
+    /* 하단 Hosted with Streamlit 워터마크 완전히 숨기기 */
+    footer {display: none !important;}
+
     /* 여백 모바일 최적화 */
     .main .block-container {
         padding-top: 1.2rem;
@@ -215,23 +222,28 @@ def add_record(date_str, r_type, cat, sub_cat, amount, method, is_fixed, memo):
     conn.close()
 
 def upsert_edited_records(original_filtered_df, edited_df):
+    """표에서 수정한 내용(삭제, 업데이트, 신규추가)을 안전하게 반영"""
     conn = get_db()
     c = conn.cursor()
     
+    # 1. 기본 UI(휴지통)로 삭제된 행 처리
     orig_ids = set(original_filtered_df['id'].dropna().astype(int))
     curr_ids = set(edited_df['id'].dropna().astype(int)) if 'id' in edited_df.columns else set()
     deleted_ids = orig_ids - curr_ids
     for d_id in deleted_ids:
         c.execute("DELETE FROM records WHERE id = ?", (d_id,))
         
+    # 2. 업데이트, 신규 추가, 그리고 체크박스로 삭제된 행 처리
     for _, row in edited_df.iterrows():
         r_id = row.get('id')
         
+        # 명시적으로 '삭제' 체크박스에 체크한 경우 삭제 처리
         if row.get('삭제') == True:
             if pd.notna(r_id) and str(r_id).isdigit() and int(r_id) > 0:
                 c.execute("DELETE FROM records WHERE id = ?", (int(r_id),))
-            continue
+            continue # 삭제했으므로 업데이트 과정 생략
             
+        # 체크되지 않은 일반 데이터는 수정/저장 진행
         d_val = row['date']
         d_str = pd.to_datetime(d_val, errors='coerce').strftime("%Y-%m-%d") if pd.notna(d_val) else datetime.today().strftime("%Y-%m-%d")
         
@@ -259,6 +271,7 @@ def upsert_edited_records(original_filtered_df, edited_df):
     conn.close()
 
 def import_records_from_df(import_df):
+    """엑셀 업로드로 데이터베이스 일괄 복원/추가 (다양한 날짜 포맷 자동 정규화)"""
     conn = get_db()
     c = conn.cursor()
     required_cols = ['date', 'type', 'category', 'amount', 'payment_method']
