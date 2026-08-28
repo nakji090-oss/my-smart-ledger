@@ -27,12 +27,10 @@ def load_settings():
         pay_methods = df_settings["pay_methods"].dropna().tolist() or DEFAULT_PAY_METHODS
         return income_cats, expense_cats, pay_methods
     except Exception:
-        # settings 시트가 아직 없으면 기본값 사용
         return DEFAULT_INCOME_CATS.copy(), DEFAULT_EXPENSE_CATS.copy(), DEFAULT_PAY_METHODS.copy()
 
 def save_settings(income_cats, expense_cats, pay_methods):
     try:
-        # 최대 길이에 맞춰 DataFrame 생성
         max_len = max(len(income_cats), len(expense_cats), len(pay_methods))
         df_new = pd.DataFrame({
             "income_cats": income_cats + [None] * (max_len - len(income_cats)),
@@ -129,13 +127,12 @@ if menu == "📝 내역 입력":
                 custom_method = st.text_input("새 결제수단명 입력") if payment_method == "➕ 새 결제수단 직접 입력" else None
             with col4:
                 is_fixed = st.checkbox("고정 지출 여부 (공과금, 보험료, 구독료 등)")
-                sub_category = st.text_input("상세 항목 (예: 점심식사, 주유비)")
+                sub_category = st.text_input("상세 항목 (예: 아파트관리비, 점심식사)")
         else:
             col3, col4 = st.columns(2)
             with col3:
                 category = st.selectbox("수입 항목", income_categories + ["➕ 새 항목 직접 입력"])
                 custom_cat = st.text_input("새 수입 항목명 입력") if category == "➕ 새 항목 직접 입력" else None
-                
                 payment_method = st.selectbox("입금 수단", ["급여통장", "부계좌", "현금", "기타"])
                 custom_method = None
             with col4:
@@ -168,7 +165,8 @@ elif menu == "📊 월별 분석 및 통계":
         st.info("기록된 데이터가 없습니다.")
     else:
         df['year_month'] = df['date'].apply(lambda x: str(x)[:7])
-        selected_month = st.selectbox("조회할 월 선택", sorted(df['year_month'].unique(), reverse=True))
+        available_months = sorted(df['year_month'].unique(), reverse=True)
+        selected_month = st.selectbox("조회할 월 선택", available_months)
         m_df = df[df['year_month'] == selected_month]
         
         income_df = m_df[m_df['type'] == '수입']
@@ -194,6 +192,19 @@ elif menu == "📊 월별 분석 및 통계":
         if total_expense > 0:
             fig = px.pie(values=[fixed_expense, var_expense], names=["고정지출", "변동지출"], hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
+            
+        st.divider()
+        c_col1, c_col2 = st.columns(2)
+        with c_col1:
+            st.write("#### 💳 결제수단/카드별 지출")
+            if not expense_df.empty:
+                card_sum = expense_df.groupby('payment_method')['amount'].sum().reset_index()
+                st.plotly_chart(px.bar(card_sum, x='payment_method', y='amount', text_auto=True), use_container_width=True)
+        with c_col2:
+            st.write("#### 🏷️ 카테고리별 지출")
+            if not expense_df.empty:
+                cat_sum = expense_df.groupby('category')['amount'].sum().reset_index()
+                st.plotly_chart(px.pie(cat_sum, values='amount', names='category'), use_container_width=True)
 
 # -------------------------------------------------------------
 # 메뉴 3: 전체 내역 및 관리
@@ -203,100 +214,102 @@ elif menu == "📋 전체 내역 및 관리":
     df = load_data()
     if not df.empty:
         df_sorted = df.sort_values(by=["date", "id"], ascending=[False, False])
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_sorted.to_excel(writer, index=False, sheet_name='가계부_내역')
+        st.download_button(
+            label="📥 현재 내역 엑셀(XLSX) 다운로드",
+            data=output.getvalue(),
+            file_name=f"가계부_내역_{datetime.today().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+        
         st.dataframe(df_sorted, use_container_width=True)
         
-        del_id = st.number_input("삭제할 ID 입력", min_value=1, step=1)
+        del_id = st.number_input("삭제할 ID 번호 입력", min_value=1, step=1)
         if st.button("삭제 실행", type="primary"):
             if delete_record(del_id):
                 st.success(f"ID {del_id} 내역 삭제 완료!")
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 4: 정기 고정비 일괄 등록
+# 메뉴 4: 정기 고정비 일괄 등록 (세부 입력 업그레이드)
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
-    st.subheader("매달 반복되는 고정비 원클릭 등록")
+    st.subheader("⚙️ 매달 반복되는 정기 고정비 세부 일괄 등록")
+    st.caption("항목별로 금액과 결제수단을 세부 입력하세요. 0원인 항목은 자동으로 제외되고 등록됩니다.")
+    
     target_date = st.date_input("등록 기준 일자", datetime.today())
+    st.write("---")
     
-    tithe = st.number_input("십일조 / 헌금 (원)", value=0, step=10000)
-    insurance = st.number_input("보험료 (원)", value=0, step=10000)
-    telecom = st.number_input("통신비 (원)", value=0, step=5000)
-    maintenance = st.number_input("관리비/공과금 (원)", value=0, step=10000)
-    
-    if st.button("🚀 일괄 전송", use_container_width=True):
-        items = [
-            ("십일조/기부", "십일조", tithe, "계좌이체"),
-            ("보험료", "보장성 보험", insurance, "계좌이체"),
-            ("주거/통신", "통신비", telecom, payment_methods[0] if payment_methods else "카드"),
-            ("공과금", "관리비", maintenance, "계좌이체")
-        ]
-        df = load_data()
-        start_id = 1 if df.empty or "id" not in df.columns else int(df["id"].max()) + 1
-        new_rows = [{"id": start_id + i, "date": str(target_date), "type": "지출", "category": cat,
-                     "sub_category": sub, "amount": int(amt), "payment_method": m, "is_fixed": 1, "memo": "고정비 일괄등록"}
-                    for i, (cat, sub, amt, m) in enumerate(items) if amt > 0]
-        if new_rows and save_data(pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)):
-            st.success(f"{len(new_rows)}건 등록 완료!")
-
-# -------------------------------------------------------------
-# 메뉴 5: 🏷️ 분류 및 결제수단 관리 (신규 추가)
-# -------------------------------------------------------------
-elif menu == "🏷️ 분류 및 결제수단 관리":
-    st.subheader("🏷️ 카테고리 및 결제수단 맞춤 설정")
-    st.caption("새로운 항목을 추가하거나 불필요한 항목을 삭제하면 구글 시트에 저장되어 즉시 반영됩니다.")
-    
-    col1, col2, col3 = st.columns(3)
-    
+    # 1. 십일조 / 기부
+    st.write("#### 1️⃣ 십일조 및 헌금/기부")
+    col1, col2 = st.columns([2, 1])
     with col1:
-        st.write("##### 🛒 지출 카테고리")
-        st.write(expense_categories)
-        new_exp = st.text_input("새 지출 카테고리 추가", placeholder="예: 육아/키즈, 경조사")
-        if st.button("지출 카테고리 추가") and new_exp:
-            if new_exp not in expense_categories:
-                expense_categories.append(new_exp)
-                save_settings(income_categories, expense_categories, payment_methods)
-                st.success(f"'{new_exp}' 추가 완료!")
-                st.rerun()
-                
-        del_exp = st.selectbox("삭제할 지출 카테고리", ["선택 안 함"] + expense_categories)
-        if st.button("지출 카테고리 삭제") and del_exp != "선택 안 함":
-            expense_categories.remove(del_exp)
-            save_settings(income_categories, expense_categories, payment_methods)
-            st.warning(f"'{del_exp}' 삭제 완료!")
-            st.rerun()
-
+        tithe_amt = st.number_input("십일조 금액 (원)", value=0, step=10000, key="tithe_amt")
     with col2:
-        st.write("##### 💵 수입 카테고리")
-        st.write(income_categories)
-        new_inc = st.text_input("새 수입 카테고리 추가", placeholder="예: 중고거래, 강의료")
-        if st.button("수입 카테고리 추가") and new_inc:
-            if new_inc not in income_categories:
-                income_categories.append(new_inc)
-                save_settings(income_categories, expense_categories, payment_methods)
-                st.success(f"'{new_inc}' 추가 완료!")
-                st.rerun()
-                
-        del_inc = st.selectbox("삭제할 수입 카테고리", ["선택 안 함"] + income_categories)
-        if st.button("수입 카테고리 삭제") and del_inc != "선택 안 함":
-            income_categories.remove(del_inc)
-            save_settings(income_categories, expense_categories, payment_methods)
-            st.warning(f"'{del_inc}' 삭제 완료!")
-            st.rerun()
+        tithe_pay = st.selectbox("결제/이체 수단", payment_methods, index=payment_methods.index("계좌이체") if "계좌이체" in payment_methods else 0, key="tithe_pay")
 
+    col3, col4 = st.columns([2, 1])
     with col3:
-        st.write("##### 💳 결제수단 / 카드")
-        st.write(payment_methods)
-        new_pay = st.text_input("새 카드/결제수단 추가", placeholder="예: 롯데카드, 토스페이")
-        if st.button("결제수단 추가") and new_pay:
-            if new_pay not in payment_methods:
-                payment_methods.append(new_pay)
-                save_settings(income_categories, expense_categories, payment_methods)
-                st.success(f"'{new_pay}' 추가 완료!")
-                st.rerun()
-                
-        del_pay = st.selectbox("삭제할 결제수단", ["선택 안 함"] + payment_methods)
-        if st.button("결제수단 삭제") and del_pay != "선택 안 함":
-            payment_methods.remove(del_pay)
-            save_settings(income_categories, expense_categories, payment_methods)
-            st.warning(f"'{del_pay}' 삭제 완료!")
-            st.rerun()
+        donation_amt = st.number_input("기타 헌금 / 정기 후원금 (원)", value=0, step=10000, key="don_amt")
+    with col4:
+        donation_pay = st.selectbox("결제/이체 수단", payment_methods, index=payment_methods.index("계좌이체") if "계좌이체" in payment_methods else 0, key="don_pay")
+
+    st.write("---")
+    
+    # 2. 보험료 세부 (본인, 배우자, 자녀, 실비, 암, 운전자 등)
+    st.write("#### 2️⃣ 보험료 세부 항목")
+    b1, b2 = st.columns([2, 1])
+    with b1:
+        ins_main = st.number_input("본인 종합/실손보험 (원)", value=0, step=5000, key="ins_main")
+    with b2:
+        ins_main_pay = st.selectbox("결제 수단", payment_methods, key="ins_main_pay")
+
+    b3, b4 = st.columns([2, 1])
+    with b3:
+        ins_spouse = st.number_input("배우자/가족 보험 (원)", value=0, step=5000, key="ins_spouse")
+    with b4:
+        ins_spouse_pay = st.selectbox("결제 수단", payment_methods, key="ins_spouse_pay")
+
+    b5, b6 = st.columns([2, 1])
+    with b5:
+        ins_car = st.number_input("자동차/운전자 보험 (원)", value=0, step=5000, key="ins_car")
+    with b6:
+        ins_car_pay = st.selectbox("결제 수단", payment_methods, key="ins_car_pay")
+
+    b7, b8 = st.columns([2, 1])
+    with b7:
+        ins_other = st.number_input("기타 보장/저축성 보험 (원)", value=0, step=5000, key="ins_other")
+    with b8:
+        ins_other_pay = st.selectbox("결제 수단", payment_methods, key="ins_other_pay")
+
+    st.write("---")
+
+    # 3. 통신료 세부 (휴대폰 vs 인터넷/TV)
+    st.write("#### 3️⃣ 통신비 세부 항목")
+    t1, t2 = st.columns([2, 1])
+    with t1:
+        tel_mobile = st.number_input("본인/가족 휴대폰 요금 (원)", value=0, step=5000, key="tel_mobile")
+    with t2:
+        tel_mobile_pay = st.selectbox("결제 수단", payment_methods, key="tel_mobile_pay")
+
+    t3, t4 = st.columns([2, 1])
+    with t3:
+        tel_net = st.number_input("집 인터넷 / IPTV 요금 (원)", value=0, step=5000, key="tel_net")
+    with t4:
+        tel_net_pay = st.selectbox("결제 수단", payment_methods, key="tel_net_pay")
+
+    st.write("---")
+
+    # 4. 관리비 및 공과금 세부
+    st.write("#### 4️⃣ 관리비 및 공과금 세부 항목")
+    u1, u2 = st.columns([2, 1])
+    with u1:
+        util_apt = st.number_input("아파트/주택 관리비 (원)", value=0, step=10000, key="util_apt")
+    with u2:
+        util_apt_pay = st.selectbox("결제 수단", payment_methods, key="util_apt_pay")
+
+    u3, u4 = st.columns(
