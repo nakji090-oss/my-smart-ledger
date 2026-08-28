@@ -12,51 +12,31 @@ st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="w
 
 st.markdown("""
 <style>
-    /* 1. 우측 상단 메뉴들 (Fork, GitHub 아이콘, 점 3개 등) 강제 숨김 */
-    header[data-testid="stHeader"] .stAppToolbar {
-        display: none !important;
-    }
-    [data-testid="stToolbar"] {
-        display: none !important;
-    }
-    .stAppDeployButton {
+    /* 1. ⭐ 우측 상단 아이콘(Deploy, GitHub, 점 3개)만 정확하게 핀셋 제거 (메뉴버튼은 절대 건드리지 않음) */
+    [data-testid="stHeaderActionElements"] {
         display: none !important;
     }
     
-    /* 2. 하단 'Hosted with Streamlit' 빨간 배너 강제 삭제 */
-    a[href^="https://streamlit.io/cloud"] {
+    /* 2. 하단 'Hosted with Streamlit' 배너 강제 숨김 */
+    div[class^="viewerBadge"] {
         display: none !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
     }
-    div[class*="viewerBadge"] {
-        display: none !important;
-        opacity: 0 !important;
-    }
-
-    /* 3. 하단 기본 워터마크(footer) 숨김 */
+    
+    /* 3. 하단 기본 푸터 숨김 */
     footer {
         display: none !important;
     }
 
-    /* 4. ⭐ 왼쪽 메뉴 열기 버튼 (>> 모양) 절대 보호 및 우선순위 최상단 */
-    [data-testid="collapsedControl"] {
-        display: flex !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        z-index: 999999 !important;
-    }
-
-    /* 5. 모바일 본문 여백 확보 (내용이 위로 올라가 메뉴 버튼을 가리지 않게 처리) */
+    /* 4. 모바일 화면 최적화 (본문이 위로 쏠려 메뉴 버튼을 덮지 않도록 상단 여백 넉넉히 4rem 확보) */
     .main .block-container {
-        padding-top: 3.5rem !important;
+        padding-top: 4rem !important; 
         padding-bottom: 2.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         max-width: 1000px;
     }
 
-    /* 6. 모바일 버튼, 입력창 UI 최적화 */
+    /* 버튼 및 입력창 디자인 */
     .stButton > button {
         border-radius: 12px;
         font-weight: 600;
