@@ -8,7 +8,7 @@ import io
 # -------------------------------------------------------------
 # 1. 페이지 설정 및 모바일 최적화 커스텀 스타일 (CSS)
 # -------------------------------------------------------------
-st.set_page_config(page_title="스마트 가계부 Pro", page_icon="💰", layout="wide")
+st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="wide")
 
 st.markdown("""
 <style>
