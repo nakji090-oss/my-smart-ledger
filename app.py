@@ -8,7 +8,7 @@ import io
 # -------------------------------------------------------------
 # 1. 페이지 설정 및 모바일 최적화 커스텀 스타일 (CSS)
 # -------------------------------------------------------------
-st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="wide")
+st.set_page_config(page_title="스마트 가계부 Pro", page_icon="💰", layout="wide")
 
 st.markdown("""
 <style>
@@ -24,9 +24,9 @@ st.markdown("""
     .stButton > button {
         border-radius: 12px;
         font-weight: 600;
-        font-size: 16px;
-        min-height: 48px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        font-size: 15px;
+        min-height: 46px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
     }
     /* 입력 필드 테두리 및 패딩 */
     .stTextInput > div > div > input, 
@@ -101,6 +101,14 @@ def init_db():
             memo TEXT
         )
     ''')
+
+    # 4) 월별 목표 예산 테이블
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS budgets (
+            year_month TEXT PRIMARY KEY,
+            budget_amount INTEGER DEFAULT 0
+        )
+    ''')
     
     # 기본 카테고리 초기 데이터
     c.execute("SELECT COUNT(*) FROM settings")
@@ -146,7 +154,7 @@ def init_db():
 init_db()
 
 # -------------------------------------------------------------
-# 3. 데이터 CRUD 함수
+# 3. 데이터 CRUD 및 헬퍼 함수
 # -------------------------------------------------------------
 def load_settings():
     conn = get_db()
@@ -208,6 +216,36 @@ def delete_record(record_id):
     conn.commit()
     conn.close()
 
+def import_records_from_df(import_df):
+    """엑셀 업로드로 데이터베이스 일괄 복원/추가"""
+    conn = get_db()
+    c = conn.cursor()
+    required_cols = ['date', 'type', 'category', 'amount', 'payment_method']
+    if not all(col in import_df.columns for col in required_cols):
+        conn.close()
+        return False, "엑셀 필수 열(date, type, category, amount, payment_method)이 누락되었습니다."
+    
+    count = 0
+    for _, row in import_df.iterrows():
+        c.execute('''
+            INSERT INTO records (date, type, category, sub_category, amount, payment_method, is_fixed, memo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            str(row['date'])[:10],
+            str(row['type']),
+            str(row['category']),
+            str(row.get('sub_category', '') or ''),
+            int(pd.to_numeric(row['amount'], errors='coerce') or 0),
+            str(row['payment_method']),
+            1 if str(row.get('is_fixed', 0)) in ['1', 'True', '1.0'] else 0,
+            str(row.get('memo', '') or '')
+        ))
+        count += 1
+    conn.commit()
+    conn.close()
+    return True, f"총 {count}건의 내역을 성공적으로 복원/추가했습니다."
+
+# 고정비 템플릿
 def load_fixed_templates():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM fixed_templates ORDER BY id ASC", conn)
@@ -253,39 +291,86 @@ def delete_fixed_template(t_id):
     conn.commit()
     conn.close()
 
+# 예산 관리 함수
+def get_budget(ym):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT budget_amount FROM budgets WHERE year_month = ?", (ym,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+def set_budget(ym, amount):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO budgets (year_month, budget_amount) VALUES (?, ?)
+        ON CONFLICT(year_month) DO UPDATE SET budget_amount = excluded.budget_amount
+    ''', (ym, int(amount)))
+    conn.commit()
+    conn.close()
+
 # -------------------------------------------------------------
 # 4. 메인 UI & 메뉴
 # -------------------------------------------------------------
 income_categories, expense_categories, payment_methods = load_settings()
 
-st.title("💰 스마트 가계부")
+st.title("💰 스마트 가계부 Pro")
 menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "📝 내역 입력", 
-    "📊 월별 단일 분석", 
+    "📊 월별 단일 분석 & 예산", 
     "📈 월별 지출 비교 (MoM)", 
     "📋 전체 내역 및 수정·관리", 
     "⚙️ 정기 고정비 일괄 등록",
     "🏷️ 분류 및 결제수단 관리"
 ])
 
+# 세션 상태 초기화 (빠른 금액 입력용)
+if "quick_amount" not in st.session_state:
+    st.session_state.quick_amount = 0
+
 # -------------------------------------------------------------
-# 메뉴 1: 내역 입력
+# 메뉴 1: 내역 입력 (빠른 금액 증감 버튼 탑재)
 # -------------------------------------------------------------
 if menu == "📝 내역 입력":
     st.subheader("📝 새로운 수입 / 지출 입력")
     
     rec_type = st.radio("구분을 선택하세요", ["지출", "수입"], horizontal=True, key="entry_rec_type")
     
-    with st.form("record_form", clear_on_submit=True):
+    # ⚡️ 빠른 금액 입력 버튼 (모바일 편의 기능)
+    st.caption("⚡️ 빠른 금액 추가 (터치하여 금액을 더해보세요)")
+    btn_cols = st.columns(5)
+    with btn_cols[0]:
+        if st.button("+1만", use_container_width=True):
+            st.session_state.quick_amount += 10000
+    with btn_cols[1]:
+        if st.button("+5만", use_container_width=True):
+            st.session_state.quick_amount += 50000
+    with btn_cols[2]:
+        if st.button("+10만", use_container_width=True):
+            st.session_state.quick_amount += 100000
+    with btn_cols[3]:
+        if st.button("+50만", use_container_width=True):
+            st.session_state.quick_amount += 500000
+    with btn_cols[4]:
+        if st.button("0원 정정", use_container_width=True):
+            st.session_state.quick_amount = 0
+
+    with st.form("record_form"):
         col1, col2 = st.columns(2)
         with col1:
             rec_date = st.date_input("날짜", datetime.today())
         with col2:
-            amount = st.number_input("금액 (원)", min_value=0, step=1000, value=0)
+            amount = st.number_input(
+                "금액 (원)", 
+                min_value=0, 
+                step=1000, 
+                value=int(st.session_state.quick_amount)
+            )
             
         col3, col4 = st.columns(2)
         
-        # 1) 지출 선택 시 UI
+        # 지출 선택 시
         if rec_type == "지출":
             with col3:
                 category = st.selectbox("지출 카테고리 (대분류)", expense_categories + ["➕ 새 카테고리 직접 입력"], key="exp_cat_select")
@@ -306,7 +391,7 @@ if menu == "📝 내역 입력":
             st.write("")
             is_fixed = st.checkbox("📌 매달 나가는 고정 지출인가요? (공과금, 보험료, 구독료, 통신비 등)")
             
-        # 2) 수입 선택 시 UI (기본 결제/입금 수단을 '현금'으로 기본 세팅)
+        # 수입 선택 시 (기본값 '현금' 세팅)
         else:
             with col3:
                 category = st.selectbox("수입 항목 (대분류)", income_categories + ["➕ 새 항목 직접 입력"], key="inc_cat_select")
@@ -317,7 +402,6 @@ if menu == "📝 내역 입력":
             col5, col6 = st.columns(2)
             with col5:
                 inc_pay_options = payment_methods + ["➕ 새 입금수단 직접 입력"]
-                # ⭐️ '현금'을 기본 인덱스로 설정
                 default_cash_idx = inc_pay_options.index("현금") if "현금" in inc_pay_options else 0
                 payment_method = st.selectbox("입금 계좌 / 수단", inc_pay_options, index=default_cash_idx, key="inc_pay_select")
                 custom_method = st.text_input("새 입금수단명", placeholder="직접 입력") if payment_method == "➕ 새 입금수단 직접 입력" else None
@@ -329,13 +413,13 @@ if menu == "📝 내역 입력":
             is_fixed = False
 
         st.write("")
-        submitted = st.form_submit_button(f"💾 {rec_type} 내역 가계부에 저장하기", use_container_width=True, type="primary")
+        submitted = st.form_submit_button(f"💾 {rec_type} 내역 저장하기", use_container_width=True, type="primary")
         
         if submitted:
             if amount <= 0:
                 st.error("금액을 0원보다 크게 입력해주세요.")
             elif not final_category or final_category.startswith("➕"):
-                st.error("카테고리(항목)명을 정확히 입력해주세요.")
+                st.error("카테고리명을 정확히 입력해주세요.")
             elif not final_method or final_method.startswith("➕"):
                 st.error("결제/입금 수단을 정확히 입력해주세요.")
             else:
@@ -344,14 +428,15 @@ if menu == "📝 내역 입력":
                     add_setting("expense" if rec_type == "지출" else "income", custom_cat.strip())
                 if custom_method:
                     add_setting("payment", custom_method.strip())
+                st.session_state.quick_amount = 0  # 금액 초기화
                 st.success(f"🎉 {rec_type} 내역이 성공적으로 저장되었습니다!")
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 2: 월별 단일 분석
+# 메뉴 2: 월별 단일 분석 & 예산 관리
 # -------------------------------------------------------------
-elif menu == "📊 월별 단일 분석":
-    st.subheader("📊 월별 수입 / 지출 분석")
+elif menu == "📊 월별 단일 분석 & 예산":
+    st.subheader("📊 월별 수입 / 지출 & 예산 분석")
     df = load_records()
     
     if df.empty:
@@ -370,11 +455,38 @@ elif menu == "📊 월별 단일 분석":
         fixed_expense = expense_df[expense_df['is_fixed'] == 1]['amount'].sum()
         var_expense = expense_df[expense_df['is_fixed'] == 0]['amount'].sum()
         
+        # 1. 핵심 지표 카드
         c1, c2, c3 = st.columns(3)
         c1.metric("총 수입", f"{total_income:,} 원")
         c2.metric("총 지출", f"{total_expense:,} 원")
         c3.metric("순 잉여금(저축)", f"{net_savings:,} 원")
         
+        # 2. 이번 달 예산 관리 섹션
+        st.write("---")
+        st.write("#### 🎯 이번 달 목표 예산 관리")
+        current_budget = get_budget(selected_month)
+        
+        b_col1, b_col2 = st.columns([2, 1])
+        with b_col1:
+            new_budget = st.number_input(f"{selected_month} 목표 지출 예산 (원)", value=int(current_budget), step=50000)
+        with b_col2:
+            st.write("")
+            st.write("")
+            if st.button("예산 저장", use_container_width=True):
+                set_budget(selected_month, new_budget)
+                st.success("예산이 저장되었습니다.")
+                st.rerun()
+                
+        if current_budget > 0:
+            spent_pct = min(total_expense / current_budget, 1.0)
+            remaining_budget = current_budget - total_expense
+            st.progress(spent_pct, text=f"예산 소진율: {total_expense:,}원 / {current_budget:,}원 ({spent_pct*100:.1f}%)")
+            if remaining_budget >= 0:
+                st.caption(f"💰 남은 예산: **{remaining_budget:,} 원** 남았습니다.")
+            else:
+                st.error(f"🚨 예산 초과! **{abs(remaining_budget):,} 원** 더 지출되었습니다.")
+        
+        # 3. 고정비 vs 변동비 비교
         st.write("---")
         st.write("#### ⚖️ 고정지출 vs 변동지출")
         fc1, fc2 = st.columns(2)
@@ -388,6 +500,7 @@ elif menu == "📊 월별 단일 분석":
             st.plotly_chart(fig, use_container_width=True)
             
         st.write("---")
+        # 4. 결제수단별 & 카테고리별 차트
         st.write("#### 💳 결제수단 / 카드별 지출")
         if not expense_df.empty:
             card_sum = expense_df.groupby('payment_method')['amount'].sum().reset_index()
@@ -457,92 +570,143 @@ elif menu == "📈 월별 지출 비교 (MoM)":
             st.plotly_chart(fig_cat_trend, use_container_width=True)
 
 # -------------------------------------------------------------
-# 메뉴 4: 전체 내역 및 수정·관리
+# 메뉴 4: 전체 내역 및 수정·관리 (검색 & 엑셀 복원 기능 탑재)
 # -------------------------------------------------------------
 elif menu == "📋 전체 내역 및 수정·관리":
-    st.subheader("📋 전체 내역 관리 및 선택 수정")
+    st.subheader("📋 전체 내역 관리 & 백업 / 복원")
     df = load_records()
     
-    if df.empty:
-        st.info("등록된 가계부 내역이 없습니다.")
-    else:
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='가계부_내역')
-        st.download_button(
-            label="📥 전체 가계부 엑셀(XLSX) 다운로드 백업",
-            data=output.getvalue(),
-            file_name=f"가계부_내역_{datetime.today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-        
-        st.write("#### 📄 등록된 내역 목록")
-        st.dataframe(df, use_container_width=True)
-        
-        st.write("---")
-        st.write("#### ✏️ 내역 선택 수정 및 삭제")
-        record_options = [f"ID {row['id']} | {row['date']} | {row['type']} | {row['category']}({row['sub_category']}) | {row['amount']:,}원 | {row['memo']}" 
-                          for _, row in df.iterrows()]
-        
-        selected_option = st.selectbox("수정 또는 삭제할 항목 선택", record_options)
-        
-        if selected_option:
-            selected_id = int(selected_option.split(" | ")[0].replace("ID ", ""))
-            target_row = df[df['id'] == selected_id].iloc[0]
-            
-            e_type = st.radio("수정할 구분 선택", ["지출", "수입"], index=0 if target_row['type'] == "지출" else 1, horizontal=True, key=f"edit_type_{selected_id}")
-            
-            with st.form(f"edit_form_{selected_id}"):
-                st.write(f"##### 🛠️ ID [{selected_id}] 세부 내용 수정")
+    tab1, tab2 = st.tabs(["🔍 내역 조회 및 수정·삭제", "💾 엑셀 백업 & 복원(가져오기)"])
+    
+    with tab1:
+        if df.empty:
+            st.info("등록된 가계부 내역이 없습니다.")
+        else:
+            # 🔍 다중 검색 및 필터링
+            st.write("#### 🔍 내역 검색 및 필터")
+            f_col1, f_col2, f_col3 = st.columns(3)
+            with f_col1:
+                search_kw = st.text_input("🔎 사용처/메모 검색", placeholder="예: 스타벅스, 이마트")
+            with f_col2:
+                type_filter = st.selectbox("구분 필터", ["전체", "지출", "수입"])
+            with f_col3:
+                pay_filter = st.selectbox("결제수단 필터", ["전체"] + payment_methods)
                 
-                e_col1, e_col2 = st.columns(2)
-                with e_col1:
-                    e_date = st.date_input("날짜", datetime.strptime(str(target_row['date']), "%Y-%m-%d"))
-                with e_col2:
-                    e_amount = st.number_input("금액 (원)", value=int(target_row['amount']), min_value=0, step=1000)
+            filtered_df = df.copy()
+            if search_kw:
+                filtered_df = filtered_df[
+                    filtered_df['memo'].str.contains(search_kw, na=False) | 
+                    filtered_df['sub_category'].str.contains(search_kw, na=False) |
+                    filtered_df['category'].str.contains(search_kw, na=False)
+                ]
+            if type_filter != "전체":
+                filtered_df = filtered_df[filtered_df['type'] == type_filter]
+            if pay_filter != "전체":
+                filtered_df = filtered_df[filtered_df['payment_method'] == pay_filter]
                 
-                e_col3, e_col4 = st.columns(2)
-                with e_col3:
-                    cat_list = expense_categories if e_type == "지출" else income_categories
-                    cur_cat_idx = cat_list.index(target_row['category']) if target_row['category'] in cat_list else 0
-                    e_category = st.selectbox("카테고리", cat_list, index=cur_cat_idx)
-                with e_col4:
-                    e_sub = st.text_input("상세 항목", value=str(target_row['sub_category'] or ""))
+            st.caption(f"검색 결과: 총 **{len(filtered_df)}** 건 (합계: **{filtered_df['amount'].sum():,}** 원)")
+            st.dataframe(filtered_df, use_container_width=True)
+            
+            st.write("---")
+            st.write("#### ✏️ 내역 선택 수정 및 삭제")
+            if not filtered_df.empty:
+                record_options = [f"ID {row['id']} | {row['date']} | {row['type']} | {row['category']}({row['sub_category']}) | {row['amount']:,}원 | {row['memo']}" 
+                                  for _, row in filtered_df.iterrows()]
+                
+                selected_option = st.selectbox("수정 또는 삭제할 항목 선택", record_options)
+                
+                if selected_option:
+                    selected_id = int(selected_option.split(" | ")[0].replace("ID ", ""))
+                    target_row = df[df['id'] == selected_id].iloc[0]
                     
-                e_col5, e_col6 = st.columns(2)
-                with e_col5:
-                    cur_pay_idx = payment_methods.index(target_row['payment_method']) if target_row['payment_method'] in payment_methods else (payment_methods.index("현금") if "현금" in payment_methods else 0)
-                    e_payment = st.selectbox("결제/입금 수단", payment_methods, index=cur_pay_idx)
-                with e_col6:
-                    e_memo = st.text_input("메모 / 사용처", value=str(target_row['memo'] or ""))
-                
-                e_fixed = st.checkbox("📌 고정 지출 여부", value=bool(target_row['is_fixed'])) if e_type == "지출" else False
-                
-                btn_col1, btn_col2 = st.columns(2)
-                with btn_col1:
-                    save_edit = st.form_submit_button("💾 수정사항 저장", use_container_width=True, type="primary")
-                with btn_col2:
-                    delete_item = st.form_submit_button("🗑️ 이 내역 삭제", use_container_width=True)
-                
-                if save_edit:
-                    update_record(selected_id, e_date, e_type, e_category, e_sub, e_amount, e_payment, e_fixed, e_memo)
-                    st.success(f"ID {selected_id} 내역 수정 완료!")
-                    st.rerun()
-                elif delete_item:
-                    delete_record(selected_id)
-                    st.warning(f"ID {selected_id} 내역 삭제 완료!")
-                    st.rerun()
+                    e_type = st.radio("수정할 구분 선택", ["지출", "수입"], index=0 if target_row['type'] == "지출" else 1, horizontal=True, key=f"edit_type_{selected_id}")
+                    
+                    with st.form(f"edit_form_{selected_id}"):
+                        st.write(f"##### 🛠️ ID [{selected_id}] 세부 내용 수정")
+                        
+                        e_col1, e_col2 = st.columns(2)
+                        with e_col1:
+                            e_date = st.date_input("날짜", datetime.strptime(str(target_row['date']), "%Y-%m-%d"))
+                        with e_col2:
+                            e_amount = st.number_input("금액 (원)", value=int(target_row['amount']), min_value=0, step=1000)
+                        
+                        e_col3, e_col4 = st.columns(2)
+                        with e_col3:
+                            cat_list = expense_categories if e_type == "지출" else income_categories
+                            cur_cat_idx = cat_list.index(target_row['category']) if target_row['category'] in cat_list else 0
+                            e_category = st.selectbox("카테고리", cat_list, index=cur_cat_idx)
+                        with e_col4:
+                            e_sub = st.text_input("상세 항목", value=str(target_row['sub_category'] or ""))
+                            
+                        e_col5, e_col6 = st.columns(2)
+                        with e_col5:
+                            cur_pay_idx = payment_methods.index(target_row['payment_method']) if target_row['payment_method'] in payment_methods else 0
+                            e_payment = st.selectbox("결제/입금 수단", payment_methods, index=cur_pay_idx)
+                        with e_col6:
+                            e_memo = st.text_input("메모 / 사용처", value=str(target_row['memo'] or ""))
+                        
+                        e_fixed = st.checkbox("📌 고정 지출 여부", value=bool(target_row['is_fixed'])) if e_type == "지출" else False
+                        
+                        btn_col1, btn_col2 = st.columns(2)
+                        with btn_col1:
+                            save_edit = st.form_submit_button("💾 수정사항 저장", use_container_width=True, type="primary")
+                        with btn_col2:
+                            delete_item = st.form_submit_button("🗑️ 이 내역 삭제", use_container_width=True)
+                        
+                        if save_edit:
+                            update_record(selected_id, e_date, e_type, e_category, e_sub, e_amount, e_payment, e_fixed, e_memo)
+                            st.success(f"ID {selected_id} 내역 수정 완료!")
+                            st.rerun()
+                        elif delete_item:
+                            delete_record(selected_id)
+                            st.warning(f"ID {selected_id} 내역 삭제 완료!")
+                            st.rerun()
+
+    # 탭 2: 엑셀 다운로드 및 엑셀 데이터 업로드 복원
+    with tab2:
+        st.write("#### 📥 1. 현재 가계부 내역 엑셀 다운로드")
+        if not df.empty:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='가계부_내역')
+            st.download_button(
+                label="📥 가계부 전체 엑셀(XLSX) 다운로드 백업",
+                data=output.getvalue(),
+                file_name=f"가계부_백업_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        else:
+            st.info("백업할 데이터가 없습니다.")
+            
+        st.write("---")
+        st.write("#### 📤 2. 백업 엑셀 파일로 가계부 복원 (가져오기)")
+        st.caption("기존에 다운로드해 둔 가계부 엑셀(.xlsx) 파일을 올리면 데이터를 안전하게 DB로 복원합니다.")
+        
+        uploaded_file = st.file_uploader("백업 엑셀 파일 선택", type=["xlsx", "xls"])
+        if uploaded_file is not None:
+            try:
+                import_df = pd.read_excel(uploaded_file)
+                st.write("미리보기:", import_df.head(3))
+                if st.button("🚀 이 엑셀 데이터 가계부로 복원하기", use_container_width=True, type="primary"):
+                    success, msg = import_records_from_df(import_df)
+                    if success:
+                        st.success(msg)
+                        st.rerun()
+                    else:
+                        st.error(msg)
+            except Exception as e:
+                st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록
+# 메뉴 5: 정기 고정비 일괄 등록 (실시간 총합계 계산)
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 설정")
     tab1, tab2 = st.tabs(["🚀 이번 달 고정비 일괄 등록", "🛠️ 고정비 항목 추가 / 수정 / 삭제"])
     
     with tab1:
-        st.info("💡 **금액과 결제수단을 입력하고 저장하면 DB에 자동으로 기억**되어 다음 달에도 동일한 내용이 유지됩니다. (0원인 항목은 가계부 등록에서 자동 제외)")
+        st.info("💡 **입력한 금액과 결제수단은 DB에 자동 기억**되어 다음 달에도 유지됩니다. (0원인 항목은 가계부 등록에서 자동 제외)")
         target_date = st.date_input("등록 기준 일자", datetime.today(), key="fix_target_date")
         
         templates = load_fixed_templates()
@@ -550,7 +714,9 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
             st.warning("등록된 고정비 템플릿 항목이 없습니다. 우측 탭에서 항목을 추가해주세요.")
         else:
             input_values = []
+            current_total = 0
             st.write("---")
+            
             for idx, row in templates.iterrows():
                 t_id = row['id']
                 col_a, col_b = st.columns([2, 1])
@@ -561,6 +727,7 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                         step=5000, 
                         key=f"tmpl_amt_{t_id}"
                     )
+                    current_total += amt
                 with col_b:
                     pay_idx = payment_methods.index(row['default_payment']) if row['default_payment'] in payment_methods else 0
                     pay_m = st.selectbox(
@@ -572,6 +739,9 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                 input_values.append((t_id, row['category'], row['sub_category'], amt, pay_m, row['memo']))
             
             st.write("---")
+            # ⭐️ 이번 달 고정비 예상 총합계 실시간 표시
+            st.metric("📊 이번 달 등록 예정 고정비 총액", f"{current_total:,} 원")
+            
             save_as_default = st.checkbox("💾 입력/수정한 금액과 결제수단을 다음 달에도 기본값으로 기억하기", value=True)
             
             if st.button("🚀 이번 달 고정비 일괄 가계부 저장", use_container_width=True, type="primary"):
@@ -584,10 +754,10 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                         update_template_defaults(t_id, amt, pay_m)
                 
                 if count > 0:
-                    st.success(f"🎉 총 {count}건의 고정 지출이 가계부에 등록되었으며, 입력하신 내용이 다음 달 기본값으로 안전하게 저장되었습니다!")
+                    st.success(f"🎉 총 {count}건({current_total:,}원)의 고정 지출이 가계부에 등록되었으며, 다음 달 기본값으로 안전하게 저장되었습니다!")
                 else:
                     if save_as_default:
-                        st.success("💾 변경된 설정값이 다음 달 기본값으로 저장되었습니다. (가계부 등록 금액은 0원)")
+                        st.success("💾 설정값이 다음 달 기본값으로 저장되었습니다.")
                     else:
                         st.warning("금액이 입력된 항목이 없습니다.")
 
