@@ -82,6 +82,7 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
+    # 1) 가계부 거래 내역 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,6 +97,7 @@ def init_db():
         )
     ''')
     
+    # 2) 카테고리/결제수단 설정 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,6 +106,7 @@ def init_db():
         )
     ''')
     
+    # 3) 정기 고정비 템플릿 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS fixed_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,6 +118,7 @@ def init_db():
         )
     ''')
 
+    # 4) 월별 목표 예산 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS budgets (
             year_month TEXT PRIMARY KEY,
@@ -122,6 +126,7 @@ def init_db():
         )
     ''')
     
+    # 기본 카테고리 초기 데이터
     c.execute("SELECT COUNT(*) FROM settings")
     if c.fetchone()[0] == 0:
         default_incomes = ["월급", "성과급", "명절보너스", "금융/배당수입", "부수입", "기타수입"]
@@ -136,6 +141,7 @@ def init_db():
             c.execute("INSERT OR IGNORE INTO settings (setting_type, name) VALUES ('payment', ?)", (name,))
         conn.commit()
 
+    # 기본 고정비 템플릿 초기 데이터
     c.execute("SELECT COUNT(*) FROM fixed_templates")
     if c.fetchone()[0] == 0:
         defaults_fixed = [
@@ -209,28 +215,23 @@ def add_record(date_str, r_type, cat, sub_cat, amount, method, is_fixed, memo):
     conn.close()
 
 def upsert_edited_records(original_filtered_df, edited_df):
-    """표에서 수정한 내용(삭제, 업데이트, 신규추가)을 안전하게 반영"""
     conn = get_db()
     c = conn.cursor()
     
-    # 1. 기본 UI(휴지통)로 삭제된 행 처리
     orig_ids = set(original_filtered_df['id'].dropna().astype(int))
     curr_ids = set(edited_df['id'].dropna().astype(int)) if 'id' in edited_df.columns else set()
     deleted_ids = orig_ids - curr_ids
     for d_id in deleted_ids:
         c.execute("DELETE FROM records WHERE id = ?", (d_id,))
         
-    # 2. 업데이트, 신규 추가, 그리고 체크박스로 삭제된 행 처리
     for _, row in edited_df.iterrows():
         r_id = row.get('id')
         
-        # ⭐️ 명시적으로 '삭제' 체크박스에 체크한 경우 삭제 처리
         if row.get('삭제') == True:
             if pd.notna(r_id) and str(r_id).isdigit() and int(r_id) > 0:
                 c.execute("DELETE FROM records WHERE id = ?", (int(r_id),))
-            continue # 삭제했으므로 업데이트 과정 생략
+            continue
             
-        # 체크되지 않은 일반 데이터는 수정/저장 진행
         d_val = row['date']
         d_str = pd.to_datetime(d_val, errors='coerce').strftime("%Y-%m-%d") if pd.notna(d_val) else datetime.today().strftime("%Y-%m-%d")
         
@@ -357,7 +358,7 @@ def set_budget(ym, amount):
 income_categories, expense_categories, payment_methods = load_settings()
 all_categories = sorted(list(set(expense_categories + income_categories)))
 
-st.title("💰 스마트 가계부 Pro")
+st.title("💰 스마트 가계부")
 menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "📝 내역 입력", 
     "📊 월별 단일 분석 & 예산", 
@@ -616,7 +617,7 @@ elif menu == "📈 월별 지출 비교 (MoM)":
             st.plotly_chart(fig_cat_trend, use_container_width=True)
 
 # -------------------------------------------------------------
-# 메뉴 4: 전체 내역 및 바로 수정 (삭제 체크박스 탑재)
+# 메뉴 4: 전체 내역 및 바로 수정
 # -------------------------------------------------------------
 elif menu == "📋 전체 내역 및 바로 수정":
     st.subheader("📋 전체 내역 관리 및 삭제·수정")
@@ -650,7 +651,6 @@ elif menu == "📋 전체 내역 및 바로 수정":
             st.caption(f"💡 **수정:** 표의 칸을 클릭하여 내용을 변경하세요.<br>💡 **삭제:** 지우고 싶은 항목의 **[🗑️ 삭제]** 체크박스를 누른 후 <b>저장</b>을 누르세요.<br>(조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)", unsafe_allow_html=True)
             
             df_edit = filtered_df.drop(columns=['year_month']).copy()
-            # ⭐️ 삭제 전용 체크박스 열을 가장 앞에 추가
             df_edit.insert(0, '삭제', False)
             
             df_edit['date'] = pd.to_datetime(df_edit['date'], errors='coerce').dt.date
