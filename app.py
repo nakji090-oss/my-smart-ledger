@@ -389,16 +389,6 @@ menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "🏷️ 분류 및 결제수단 관리"
 ])
 
-if "amount_input" not in st.session_state:
-    st.session_state["amount_input"] = 0
-
-def add_quick_amount(add_val):
-    current = st.session_state.get("amount_input", 0)
-    st.session_state["amount_input"] = int(current) + add_val
-
-def reset_quick_amount():
-    st.session_state["amount_input"] = 0
-
 # -------------------------------------------------------------
 # 메뉴 1: 내역 입력
 # -------------------------------------------------------------
@@ -407,14 +397,6 @@ if menu == "📝 내역 입력":
     
     rec_type = st.radio("구분을 선택하세요", ["지출", "수입"], horizontal=True, key="entry_rec_type")
     
-    st.caption("⚡️ 빠른 금액 추가 (클릭 시 현재 금액에 누적합산됩니다)")
-    btn_cols = st.columns(5)
-    btn_cols[0].button("+1만", use_container_width=True, on_click=add_quick_amount, args=(10000,))
-    btn_cols[1].button("+5만", use_container_width=True, on_click=add_quick_amount, args=(50000,))
-    btn_cols[2].button("+10만", use_container_width=True, on_click=add_quick_amount, args=(100000,))
-    btn_cols[3].button("+50만", use_container_width=True, on_click=add_quick_amount, args=(500000,))
-    btn_cols[4].button("0원 정정", use_container_width=True, on_click=reset_quick_amount)
-
     with st.form("record_form"):
         col1, col2 = st.columns(2)
         with col1:
@@ -424,7 +406,7 @@ if menu == "📝 내역 입력":
                 "금액 (원)", 
                 min_value=0, 
                 step=1000, 
-                key="amount_input"
+                value=0
             )
             
         col3, col4 = st.columns(2)
@@ -485,7 +467,6 @@ if menu == "📝 내역 입력":
                     add_setting("expense" if rec_type == "지출" else "income", custom_cat.strip())
                 if custom_method:
                     add_setting("payment", custom_method.strip())
-                st.session_state["amount_input"] = 0
                 st.success(f"🎉 {rec_type} 내역이 성공적으로 저장되었습니다!")
                 st.rerun()
 
