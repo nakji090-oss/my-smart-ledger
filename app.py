@@ -12,43 +12,45 @@ st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="w
 
 st.markdown("""
 <style>
-    /* 1. 우측 상단 GitHub, Deploy, 점 3개 메뉴 영역 숨기기 (왼쪽 ☰ 메뉴는 유지) */
+    /* 1. 우측 상단 툴바 (GitHub, Deploy, 점3개 등) 완전히 숨기기 */
     [data-testid="stToolbar"] {
         display: none !important;
-    }
-    
-    /* 2. 상단 헤더 배경을 투명하게 만들어 화면을 넓게 씀 */
-    [data-testid="stHeader"] {
-        background-color: transparent !important;
+        visibility: hidden !important;
     }
 
-    /* 3. 하단 Streamlit 기본 워터마크(footer) 숨기기 */
+    /* 2. 하단 워터마크(Made with Streamlit) 완전히 숨기기 */
     footer {
         display: none !important;
+        visibility: hidden !important;
     }
-    
-    /* 4. Streamlit Cloud 빨간색 하단 호스팅 배너 강제 가리기 (무료버전 워터마크) */
-    .viewerBadge_container__1QSob,
-    .viewerBadge_link__1S137,
-    .viewerBadge_text__1JaDK,
-    div[data-testid="stDecoration"],
-    #MainMenu {
+
+    /* 3. Streamlit Cloud 빨간색 배너(Hosted with Streamlit) 강제 차단 */
+    div[class^="viewerBadge"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
-        pointer-events: none !important;
+    }
+    a[href^="https://streamlit.io/cloud"] {
+        display: none !important;
     }
 
-    /* 여백 모바일 최적화 */
+    /* 4. 왼쪽 ☰ 메뉴(햄버거 버튼)는 제일 위로 올려서 무조건 보이도록 강제 유지 */
+    [data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        z-index: 99999 !important;
+    }
+
+    /* 5. 모바일 화면 최적화 (본문이 ☰ 메뉴 버튼을 가리지 않도록 상단 여백 넉넉히 확보) */
     .main .block-container {
-        padding-top: 2.5rem; /* ☰ 버튼과 겹치지 않게 상단 여백 살짝 확보 */
-        padding-bottom: 2.5rem;
-        padding-left: 0.8rem;
-        padding-right: 0.8rem;
+        padding-top: 3.5rem !important;
+        padding-bottom: 2.5rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
         max-width: 1000px;
     }
-    
-    /* 버튼 크기 및 터치 영역 확대 */
+
+    /* 6. 버튼 및 입력창 디자인 */
     .stButton > button {
         border-radius: 12px;
         font-weight: 600;
@@ -56,14 +58,12 @@ st.markdown("""
         min-height: 46px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.06);
     }
-    /* 입력 필드 테두리 및 패딩 */
     .stTextInput > div > div > input, 
     .stNumberInput > div > div > input,
     .stSelectbox > div > div {
         border-radius: 10px;
         font-size: 15px;
     }
-    /* 통계 지표(Metric) 카드 스타일 */
     div[data-testid="stMetric"] {
         background-color: #f8f9fa;
         border: 1px solid #e9ecef;
@@ -78,7 +78,6 @@ st.markdown("""
             border-color: #2f3440;
         }
     }
-    /* TOP 3 카테고리 카드 스타일 */
     .top-card {
         background-color: #eef2ff;
         border-left: 4px solid #4f46e5;
@@ -110,7 +109,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1) 가계부 거래 내역 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +123,6 @@ def init_db():
         )
     ''')
     
-    # 2) 카테고리/결제수단 설정 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +131,6 @@ def init_db():
         )
     ''')
     
-    # 3) 정기 고정비 템플릿 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS fixed_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,7 +142,6 @@ def init_db():
         )
     ''')
 
-    # 4) 월별 목표 예산 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS budgets (
             year_month TEXT PRIMARY KEY,
@@ -154,7 +149,6 @@ def init_db():
         )
     ''')
     
-    # 기본 카테고리 초기 데이터
     c.execute("SELECT COUNT(*) FROM settings")
     if c.fetchone()[0] == 0:
         default_incomes = ["월급", "성과급", "명절보너스", "금융/배당수입", "부수입", "기타수입"]
@@ -169,7 +163,6 @@ def init_db():
             c.execute("INSERT OR IGNORE INTO settings (setting_type, name) VALUES ('payment', ?)", (name,))
         conn.commit()
 
-    # 기본 고정비 템플릿 초기 데이터
     c.execute("SELECT COUNT(*) FROM fixed_templates")
     if c.fetchone()[0] == 0:
         defaults_fixed = [
