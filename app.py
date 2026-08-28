@@ -82,7 +82,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # 1) 가계부 거래 내역 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +96,6 @@ def init_db():
         )
     ''')
     
-    # 2) 카테고리/결제수단 설정 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,7 +104,6 @@ def init_db():
         )
     ''')
     
-    # 3) 정기 고정비 템플릿 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS fixed_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,7 +115,6 @@ def init_db():
         )
     ''')
 
-    # 4) 월별 목표 예산 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS budgets (
             year_month TEXT PRIMARY KEY,
@@ -126,7 +122,6 @@ def init_db():
         )
     ''')
     
-    # 기본 카테고리 초기 데이터
     c.execute("SELECT COUNT(*) FROM settings")
     if c.fetchone()[0] == 0:
         default_incomes = ["월급", "성과급", "명절보너스", "금융/배당수입", "부수입", "기타수입"]
@@ -141,7 +136,6 @@ def init_db():
             c.execute("INSERT OR IGNORE INTO settings (setting_type, name) VALUES ('payment', ?)", (name,))
         conn.commit()
 
-    # 기본 고정비 템플릿 초기 데이터
     c.execute("SELECT COUNT(*) FROM fixed_templates")
     if c.fetchone()[0] == 0:
         defaults_fixed = [
@@ -215,20 +209,28 @@ def add_record(date_str, r_type, cat, sub_cat, amount, method, is_fixed, memo):
     conn.close()
 
 def upsert_edited_records(original_filtered_df, edited_df):
-    """안전한 부분 수정(Upsert) 방식: 필터링 상태에서도 다른 내역 유실 없이 수정 및 삭제 반영"""
+    """표에서 수정한 내용(삭제, 업데이트, 신규추가)을 안전하게 반영"""
     conn = get_db()
     c = conn.cursor()
     
-    # 1. 삭제된 항목 처리 (기존 필터 대상 ID 중 편집 후 표에서 사라진 ID)
+    # 1. 기본 UI(휴지통)로 삭제된 행 처리
     orig_ids = set(original_filtered_df['id'].dropna().astype(int))
     curr_ids = set(edited_df['id'].dropna().astype(int)) if 'id' in edited_df.columns else set()
     deleted_ids = orig_ids - curr_ids
-    
     for d_id in deleted_ids:
         c.execute("DELETE FROM records WHERE id = ?", (d_id,))
         
-    # 2. 업데이트 및 신규 추가 처리
+    # 2. 업데이트, 신규 추가, 그리고 체크박스로 삭제된 행 처리
     for _, row in edited_df.iterrows():
+        r_id = row.get('id')
+        
+        # ⭐️ 명시적으로 '삭제' 체크박스에 체크한 경우 삭제 처리
+        if row.get('삭제') == True:
+            if pd.notna(r_id) and str(r_id).isdigit() and int(r_id) > 0:
+                c.execute("DELETE FROM records WHERE id = ?", (int(r_id),))
+            continue # 삭제했으므로 업데이트 과정 생략
+            
+        # 체크되지 않은 일반 데이터는 수정/저장 진행
         d_val = row['date']
         d_str = pd.to_datetime(d_val, errors='coerce').strftime("%Y-%m-%d") if pd.notna(d_val) else datetime.today().strftime("%Y-%m-%d")
         
@@ -239,7 +241,6 @@ def upsert_edited_records(original_filtered_df, edited_df):
         sub_cat = str(row.get('sub_category', '') or '')
         pay_m = str(row['payment_method'])
         memo = str(row.get('memo', '') or '')
-        r_id = row.get('id')
         
         if pd.notna(r_id) and str(r_id).isdigit() and int(r_id) > 0:
             c.execute('''
@@ -257,13 +258,12 @@ def upsert_edited_records(original_filtered_df, edited_df):
     conn.close()
 
 def import_records_from_df(import_df):
-    """엑셀 업로드로 데이터베이스 일괄 복원/추가 (다양한 날짜 포맷 자동 정규화)"""
     conn = get_db()
     c = conn.cursor()
     required_cols = ['date', 'type', 'category', 'amount', 'payment_method']
     if not all(col in import_df.columns for col in required_cols):
         conn.close()
-        return False, "엑셀 필수 열(date, type, category, amount, payment_method)이 누락되었습니다."
+        return False, "엑셀 필수 열이 누락되었습니다."
     
     count = 0
     for _, row in import_df.iterrows():
@@ -286,9 +286,8 @@ def import_records_from_df(import_df):
         count += 1
     conn.commit()
     conn.close()
-    return True, f"총 {count}건의 내역을 성공적으로 복원/추가했습니다."
+    return True, f"총 {count}건의 내역을 성공적으로 복원했습니다."
 
-# 고정비 템플릿
 def load_fixed_templates():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM fixed_templates ORDER BY id ASC", conn)
@@ -334,7 +333,6 @@ def delete_fixed_template(t_id):
     conn.commit()
     conn.close()
 
-# 예산 관리
 def get_budget(ym):
     conn = get_db()
     c = conn.cursor()
@@ -369,7 +367,6 @@ menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "🏷️ 분류 및 결제수단 관리"
 ])
 
-# 빠른 금액 버튼 세션 상태 초기화
 if "amount_input" not in st.session_state:
     st.session_state["amount_input"] = 0
 
@@ -388,7 +385,6 @@ if menu == "📝 내역 입력":
     
     rec_type = st.radio("구분을 선택하세요", ["지출", "수입"], horizontal=True, key="entry_rec_type")
     
-    # ⚡️ 금액 빠른 추가 버튼
     st.caption("⚡️ 빠른 금액 추가 (클릭 시 현재 금액에 누적합산됩니다)")
     btn_cols = st.columns(5)
     btn_cols[0].button("+1만", use_container_width=True, on_click=add_quick_amount, args=(10000,))
@@ -411,7 +407,6 @@ if menu == "📝 내역 입력":
             
         col3, col4 = st.columns(2)
         
-        # 지출 선택 시
         if rec_type == "지출":
             with col3:
                 category = st.selectbox("지출 카테고리 (대분류)", expense_categories + ["➕ 새 카테고리 직접 입력"], key="exp_cat_select")
@@ -432,7 +427,6 @@ if menu == "📝 내역 입력":
             st.write("")
             is_fixed = st.checkbox("📌 매달 나가는 고정 지출인가요? (공과금, 보험료, 구독료, 통신비 등)")
             
-        # 수입 선택 시 (기본값 '현금' 세팅)
         else:
             with col3:
                 category = st.selectbox("수입 항목 (대분류)", income_categories + ["➕ 새 항목 직접 입력"], key="inc_cat_select")
@@ -496,13 +490,11 @@ elif menu == "📊 월별 단일 분석 & 예산":
         fixed_expense = expense_df[expense_df['is_fixed'] == 1]['amount'].sum()
         var_expense = expense_df[expense_df['is_fixed'] == 0]['amount'].sum()
         
-        # 1. 핵심 지표 카드
         c1, c2, c3 = st.columns(3)
         c1.metric("총 수입", f"{total_income:,} 원")
         c2.metric("총 지출", f"{total_expense:,} 원")
         c3.metric("순 잉여금(저축)", f"{net_savings:,} 원")
         
-        # 2. 이번 달 지출 TOP 3 요약
         if not expense_df.empty:
             st.write("#### 🏆 이번 달 지출 TOP 3 카테고리")
             top3 = expense_df.groupby('category')['amount'].sum().reset_index().sort_values('amount', ascending=False).head(3)
@@ -518,7 +510,6 @@ elif menu == "📊 월별 단일 분석 & 예산":
                     </div>
                     """, unsafe_allow_html=True)
 
-        # 3. 예산 관리
         st.write("---")
         st.write("#### 🎯 이번 달 목표 예산 관리")
         current_budget = get_budget(selected_month)
@@ -543,7 +534,6 @@ elif menu == "📊 월별 단일 분석 & 예산":
             else:
                 st.error(f"🚨 예산 초과! **{abs(remaining_budget):,} 원** 더 지출되었습니다.")
         
-        # 4. 고정비 vs 변동비 비교
         st.write("---")
         st.write("#### ⚖️ 고정지출 vs 변동지출")
         fc1, fc2 = st.columns(2)
@@ -557,7 +547,6 @@ elif menu == "📊 월별 단일 분석 & 예산":
             st.plotly_chart(fig, use_container_width=True)
             
         st.write("---")
-        # 5. 결제수단별 & 카테고리별 차트
         st.write("#### 💳 결제수단 / 카드별 지출")
         if not expense_df.empty:
             card_sum = expense_df.groupby('payment_method')['amount'].sum().reset_index()
@@ -627,19 +616,18 @@ elif menu == "📈 월별 지출 비교 (MoM)":
             st.plotly_chart(fig_cat_trend, use_container_width=True)
 
 # -------------------------------------------------------------
-# 메뉴 4: 전체 내역 및 바로 수정 (안전한 Upsert 방식 적용)
+# 메뉴 4: 전체 내역 및 바로 수정 (삭제 체크박스 탑재)
 # -------------------------------------------------------------
 elif menu == "📋 전체 내역 및 바로 수정":
-    st.subheader("📋 전체 내역 및 엑셀형 즉시 편집")
+    st.subheader("📋 전체 내역 관리 및 삭제·수정")
     df = load_records()
     
-    tab1, tab2 = st.tabs(["⚡️ 표에서 바로 클릭 수정", "💾 엑셀 백업 & 복원(가져오기)"])
+    tab1, tab2 = st.tabs(["⚡️ 표에서 바로 수정 및 삭제", "💾 엑셀 백업 & 복원(가져오기)"])
     
     with tab1:
         if df.empty:
             st.info("등록된 가계부 내역이 없습니다.")
         else:
-            # 실시간 검색 및 월별 필터
             df['year_month'] = df['date'].apply(lambda x: str(x)[:7])
             months = ["전체 월"] + sorted(df['year_month'].unique().tolist(), reverse=True)
             
@@ -659,17 +647,20 @@ elif menu == "📋 전체 내역 및 바로 수정":
                     filtered_df['category'].str.contains(kw, na=False)
                 ]
                 
-            st.caption(f"💡 **표의 칸을 클릭하여 바로 수정**할 수 있습니다. (조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)")
+            st.caption(f"💡 **수정:** 표의 칸을 클릭하여 내용을 변경하세요.<br>💡 **삭제:** 지우고 싶은 항목의 **[🗑️ 삭제]** 체크박스를 누른 후 <b>저장</b>을 누르세요.<br>(조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)", unsafe_allow_html=True)
             
             df_edit = filtered_df.drop(columns=['year_month']).copy()
+            # ⭐️ 삭제 전용 체크박스 열을 가장 앞에 추가
+            df_edit.insert(0, '삭제', False)
+            
             df_edit['date'] = pd.to_datetime(df_edit['date'], errors='coerce').dt.date
             df_edit['is_fixed'] = df_edit['is_fixed'].apply(lambda x: True if x in [1, '1', True] else False)
             df_edit['amount'] = pd.to_numeric(df_edit['amount'], errors='coerce').fillna(0).astype(int)
             
-            # 인라인 편집기
             edited_data = st.data_editor(
                 df_edit,
                 column_config={
+                    "삭제": st.column_config.CheckboxColumn("🗑️ 삭제", default=False),
                     "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
                     "date": st.column_config.DateColumn("날짜", required=True, format="YYYY-MM-DD"),
                     "type": st.column_config.SelectboxColumn("구분", options=["지출", "수입"], required=True, width="small"),
@@ -690,16 +681,14 @@ elif menu == "📋 전체 내역 및 바로 수정":
             st.write("")
             col_save1, col_save2 = st.columns([2, 1])
             with col_save1:
-                if st.button("💾 표에서 수정한 변경사항 전체 DB 저장", type="primary", use_container_width=True):
-                    # 안전한 Upsert 처리
+                if st.button("💾 체크된 항목 삭제 및 수정사항 전체 저장", type="primary", use_container_width=True):
                     upsert_edited_records(filtered_df, edited_data)
-                    st.success("🎉 수정한 내용이 안전하게 가계부에 동기화되었습니다!")
+                    st.success("🎉 수정한 내용과 삭제된 항목이 안전하게 동기화되었습니다!")
                     st.rerun()
             with col_save2:
-                if st.button("🔄 원래대로 새로고침", use_container_width=True):
+                if st.button("🔄 원래대로 복구", use_container_width=True):
                     st.rerun()
 
-    # 탭 2: 엑셀 백업 & 복원
     with tab2:
         st.write("#### 📥 1. 현재 가계부 내역 엑셀 다운로드")
         if not df.empty:
