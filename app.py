@@ -90,7 +90,7 @@ def init_db():
         )
     ''')
     
-    # 3) 정기 고정비 템플릿 테이블 (항목별 기본 금액/결제수단 영구 보존)
+    # 3) 정기 고정비 템플릿 테이블
     c.execute('''
         CREATE TABLE IF NOT EXISTS fixed_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,7 +208,6 @@ def delete_record(record_id):
     conn.commit()
     conn.close()
 
-# 고정비 템플릿 관련 함수
 def load_fixed_templates():
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM fixed_templates ORDER BY id ASC", conn)
@@ -216,7 +215,6 @@ def load_fixed_templates():
     return df
 
 def update_template_defaults(t_id, amount, payment):
-    """다음 달에도 유지되도록 템플릿의 기본 금액과 결제수단을 자동 업데이트"""
     conn = get_db()
     c = conn.cursor()
     c.execute('''
@@ -287,6 +285,7 @@ if menu == "📝 내역 입력":
             
         col3, col4 = st.columns(2)
         
+        # 1) 지출 선택 시 UI
         if rec_type == "지출":
             with col3:
                 category = st.selectbox("지출 카테고리 (대분류)", expense_categories + ["➕ 새 카테고리 직접 입력"], key="exp_cat_select")
@@ -307,6 +306,7 @@ if menu == "📝 내역 입력":
             st.write("")
             is_fixed = st.checkbox("📌 매달 나가는 고정 지출인가요? (공과금, 보험료, 구독료, 통신비 등)")
             
+        # 2) 수입 선택 시 UI (기본 결제/입금 수단을 '현금'으로 기본 세팅)
         else:
             with col3:
                 category = st.selectbox("수입 항목 (대분류)", income_categories + ["➕ 새 항목 직접 입력"], key="inc_cat_select")
@@ -316,10 +316,13 @@ if menu == "📝 내역 입력":
                 
             col5, col6 = st.columns(2)
             with col5:
-                payment_method = st.selectbox("입금 계좌 / 수단", payment_methods + ["➕ 새 입금수단 직접 입력"], key="inc_pay_select")
+                inc_pay_options = payment_methods + ["➕ 새 입금수단 직접 입력"]
+                # ⭐️ '현금'을 기본 인덱스로 설정
+                default_cash_idx = inc_pay_options.index("현금") if "현금" in inc_pay_options else 0
+                payment_method = st.selectbox("입금 계좌 / 수단", inc_pay_options, index=default_cash_idx, key="inc_pay_select")
                 custom_method = st.text_input("새 입금수단명", placeholder="직접 입력") if payment_method == "➕ 새 입금수단 직접 입력" else None
             with col6:
-                memo = st.text_input("메모 / 비고", placeholder="예: 8월 급여, 배당금 입금")
+                memo = st.text_input("메모 / 비고", placeholder="예: 8월 급여, 용돈 등")
                 
             final_category = custom_cat.strip() if custom_cat else category
             final_method = custom_method.strip() if custom_method else payment_method
@@ -509,7 +512,7 @@ elif menu == "📋 전체 내역 및 수정·관리":
                     
                 e_col5, e_col6 = st.columns(2)
                 with e_col5:
-                    cur_pay_idx = payment_methods.index(target_row['payment_method']) if target_row['payment_method'] in payment_methods else 0
+                    cur_pay_idx = payment_methods.index(target_row['payment_method']) if target_row['payment_method'] in payment_methods else (payment_methods.index("현금") if "현금" in payment_methods else 0)
                     e_payment = st.selectbox("결제/입금 수단", payment_methods, index=cur_pay_idx)
                 with e_col6:
                     e_memo = st.text_input("메모 / 사용처", value=str(target_row['memo'] or ""))
@@ -532,7 +535,7 @@ elif menu == "📋 전체 내역 및 수정·관리":
                     st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록 (입력값 자동 기억/유지 기능 적용)
+# 메뉴 5: 정기 고정비 일괄 등록
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 설정")
@@ -566,21 +569,17 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                         index=pay_idx, 
                         key=f"tmpl_pay_{t_id}"
                     )
-                # 템플릿 ID를 함께 보관하여 저장 시 최신 상태로 업데이트
                 input_values.append((t_id, row['category'], row['sub_category'], amt, pay_m, row['memo']))
             
             st.write("---")
-            # 다음 달 자동 기억 체크박스 (기본 체크됨)
             save_as_default = st.checkbox("💾 입력/수정한 금액과 결제수단을 다음 달에도 기본값으로 기억하기", value=True)
             
             if st.button("🚀 이번 달 고정비 일괄 가계부 저장", use_container_width=True, type="primary"):
                 count = 0
                 for t_id, cat, sub, amt, pay_m, memo_txt in input_values:
-                    # 1. 0원 초과 항목은 가계부에 등록
                     if amt > 0:
                         add_record(target_date, "지출", cat, sub, amt, pay_m, True, memo_txt)
                         count += 1
-                    # 2. 체크된 경우 템플릿의 기본값(DB)을 현재 입력값으로 영구 갱신
                     if save_as_default:
                         update_template_defaults(t_id, amt, pay_m)
                 
