@@ -312,4 +312,139 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     with u2:
         util_apt_pay = st.selectbox("결제 수단", payment_methods, key="util_apt_pay")
 
-    u3, u4 = st.columns(
+    u3, u4 = st.columns([2, 1])
+    with u3:
+        util_gas = st.number_input("도시가스 / 난방비 (원)", value=0, step=5000, key="util_gas")
+    with u4:
+        util_gas_pay = st.selectbox("결제 수단", payment_methods, key="util_gas_pay")
+
+    u5, u6 = st.columns([2, 1])
+    with u5:
+        util_elec = st.number_input("전기 / 수도세 (별도 납부 시) (원)", value=0, step=5000, key="util_elec")
+    with u6:
+        util_elec_pay = st.selectbox("결제 수단", payment_methods, key="util_elec_pay")
+
+    st.write("---")
+
+    # 5. 정기 구독료 및 기타 고정비
+    st.write("#### 5️⃣ OTT 구독료 / 기타 정기지출")
+    s1, s2 = st.columns([2, 1])
+    with s1:
+        sub_ott = st.number_input("OTT / 음원 구독료 (넷플릭스, 유튜브 등) (원)", value=0, step=1000, key="sub_ott")
+    with s2:
+        sub_ott_pay = st.selectbox("결제 수단", payment_methods, key="sub_ott_pay")
+
+    s3, s4 = st.columns([2, 1])
+    with s3:
+        sub_rent = st.number_input("주거 월세 / 대출이자 (원)", value=0, step=10000, key="sub_rent")
+    with s4:
+        sub_rent_pay = st.selectbox("결제 수단", payment_methods, index=payment_methods.index("계좌이체") if "계좌이체" in payment_methods else 0, key="sub_rent_pay")
+
+    st.write("---")
+
+    # 일괄 전송 버튼
+    if st.button("🚀 이번 달 고정비 일괄 구글 시트 전송", use_container_width=True, type="primary"):
+        # 등록할 모든 세부 리스트 (대분류, 세부항목명, 금액, 결제수단, 메모)
+        fixed_items = [
+            ("십일조/기부", "십일조", tithe_amt, tithe_pay, "정기 고정비 - 십일조"),
+            ("십일조/기부", "기타 헌금/후원", donation_amt, donation_pay, "정기 고정비 - 후원금"),
+            ("보험료", "본인 종합/실손보험", ins_main, ins_main_pay, "정기 고정비 - 본인보험"),
+            ("보험료", "배우자/가족 보험", ins_spouse, ins_spouse_pay, "정기 고정비 - 가족보험"),
+            ("보험료", "운전자/자동차 보험", ins_car, ins_car_pay, "정기 고정비 - 차량보험"),
+            ("보험료", "기타 보험", ins_other, ins_other_pay, "정기 고정비 - 기타보험"),
+            ("주거/통신", "휴대폰 요금", tel_mobile, tel_mobile_pay, "정기 고정비 - 이동통신"),
+            ("주거/통신", "인터넷/IPTV 요금", tel_net, tel_net_pay, "정기 고정비 - 유선통신"),
+            ("공과금", "아파트 관리비", util_apt, util_apt_pay, "정기 고정비 - 관리비"),
+            ("공과금", "도시가스 요금", util_gas, util_gas_pay, "정기 고정비 - 가스비"),
+            ("공과금", "전기/수도 요금", util_elec, util_elec_pay, "정기 고정비 - 공과금"),
+            ("문화/여가", "OTT/정기구독료", sub_ott, sub_ott_pay, "정기 고정비 - 구독서비스"),
+            ("주거/통신", "월세/대출이자", sub_rent, sub_rent_pay, "정기 고정비 - 주거비")
+        ]
+
+        with st.spinner("구글 시트에 세부 항목들을 등록 중..."):
+            df = load_data()
+            start_id = 1 if df.empty or "id" not in df.columns else int(df["id"].max()) + 1
+            
+            new_rows = []
+            for cat, sub, amt, pay_m, memo_txt in fixed_items:
+                if amt > 0:  # 0원이 아닌 항목만 생성
+                    new_rows.append({
+                        "id": start_id,
+                        "date": str(target_date),
+                        "type": "지출",
+                        "category": cat,
+                        "sub_category": sub,
+                        "amount": int(amt),
+                        "payment_method": pay_m,
+                        "is_fixed": 1,
+                        "memo": memo_txt
+                    })
+                    start_id += 1
+
+            if new_rows:
+                updated_df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True)
+                if save_data(updated_df):
+                    st.success(f"🎉 총 {len(new_rows)}건의 세부 고정 지출이 구글 시트에 정확히 등록되었습니다!")
+            else:
+                st.warning("금액이 입력된 항목이 없습니다. (0원 이상인 항목만 등록됩니다)")
+
+# -------------------------------------------------------------
+# 메뉴 5: 🏷️ 분류 및 결제수단 관리
+# -------------------------------------------------------------
+elif menu == "🏷️ 분류 및 결제수단 관리":
+    st.subheader("🏷️ 카테고리 및 결제수단 맞춤 설정")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.write("##### 🛒 지출 카테고리")
+        st.write(expense_categories)
+        new_exp = st.text_input("새 지출 카테고리 추가")
+        if st.button("지출 카테고리 추가") and new_exp:
+            if new_exp not in expense_categories:
+                expense_categories.append(new_exp)
+                save_settings(income_categories, expense_categories, payment_methods)
+                st.success(f"'{new_exp}' 추가 완료!")
+                st.rerun()
+                
+        del_exp = st.selectbox("삭제할 지출 카테고리", ["선택 안 함"] + expense_categories)
+        if st.button("지출 카테고리 삭제") and del_exp != "선택 안 함":
+            expense_categories.remove(del_exp)
+            save_settings(income_categories, expense_categories, payment_methods)
+            st.warning(f"'{del_exp}' 삭제 완료!")
+            st.rerun()
+
+    with col2:
+        st.write("##### 💵 수입 카테고리")
+        st.write(income_categories)
+        new_inc = st.text_input("새 수입 카테고리 추가")
+        if st.button("수입 카테고리 추가") and new_inc:
+            if new_inc not in income_categories:
+                income_categories.append(new_inc)
+                save_settings(income_categories, expense_categories, payment_methods)
+                st.success(f"'{new_inc}' 추가 완료!")
+                st.rerun()
+                
+        del_inc = st.selectbox("삭제할 수입 카테고리", ["선택 안 함"] + income_categories)
+        if st.button("수입 카테고리 삭제") and del_inc != "선택 안 함":
+            income_categories.remove(del_inc)
+            save_settings(income_categories, expense_categories, payment_methods)
+            st.warning(f"'{del_inc}' 삭제 완료!")
+            st.rerun()
+
+    with col3:
+        st.write("##### 💳 결제수단 / 카드")
+        st.write(payment_methods)
+        new_pay = st.text_input("새 카드/결제수단 추가")
+        if st.button("결제수단 추가") and new_pay:
+            if new_pay not in payment_methods:
+                payment_methods.append(new_pay)
+                save_settings(income_categories, expense_categories, payment_methods)
+                st.success(f"'{new_pay}' 추가 완료!")
+                st.rerun()
+                
+        del_pay = st.selectbox("삭제할 결제수단", ["선택 안 함"] + payment_methods)
+        if st.button("결제수단 삭제") and del_pay != "선택 안 함":
+            payment_methods.remove(del_pay)
+            save_settings(income_categories, expense_categories, payment_methods)
+            st.warning(f"'{del_pay}' 삭제 완료!")
+            st.rerun()
