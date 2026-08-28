@@ -7,6 +7,16 @@ import io
 
 st.set_page_config(page_title="클라우드 스마트 가계부", page_icon="💰", layout="wide")
 
+# -------------------------------------------------------------
+# 0. 프라이빗 키 줄바꿈 자동 복원 처리 (PEM 파싱 에러 방지)
+# -------------------------------------------------------------
+if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+    if "private_key" in st.secrets["connections"]["gsheets"]:
+        pk = st.secrets["connections"]["gsheets"]["private_key"]
+        # 이스케이프된 \n을 실제 줄바꿈으로 변환
+        if "\\n" in pk:
+            st.secrets["connections"]["gsheets"]["private_key"] = pk.replace("\\n", "\n")
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # -------------------------------------------------------------
@@ -104,7 +114,7 @@ menu = st.sidebar.radio("메뉴 선택", [
 ])
 
 # -------------------------------------------------------------
-# 메뉴 1: 내역 입력 (+ 직접 입력 지원)
+# 메뉴 1: 내역 입력
 # -------------------------------------------------------------
 if menu == "📝 내역 입력":
     st.subheader("새로운 수입 / 지출 기록")
@@ -127,7 +137,7 @@ if menu == "📝 내역 입력":
                 custom_method = st.text_input("새 결제수단명 입력") if payment_method == "➕ 새 결제수단 직접 입력" else None
             with col4:
                 is_fixed = st.checkbox("고정 지출 여부 (공과금, 보험료, 구독료 등)")
-                sub_category = st.text_input("상세 항목 (예: 아파트관리비, 점심식사)")
+                sub_category = st.text_input("상세 항목 (예: 점심식사, 마트 장보기)")
         else:
             col3, col4 = st.columns(2)
             with col3:
@@ -141,7 +151,7 @@ if menu == "📝 내역 입력":
 
         final_category = custom_cat.strip() if custom_cat else category
         final_method = custom_method.strip() if custom_method else payment_method
-        memo = st.text_input("메모 / 사용처", placeholder="예: 스타벅스, 마트 장보기 등")
+        memo = st.text_input("메모 / 사용처", placeholder="예: 스타벅스, 쿠팡 등")
         submitted = st.form_submit_button("구글 시트에 저장하기", use_container_width=True)
         
         if submitted:
@@ -235,7 +245,7 @@ elif menu == "📋 전체 내역 및 관리":
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 4: 정기 고정비 일괄 등록 (세부 입력 업그레이드)
+# 메뉴 4: 정기 고정비 세부 일괄 등록
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 매달 반복되는 정기 고정비 세부 일괄 등록")
@@ -244,7 +254,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     target_date = st.date_input("등록 기준 일자", datetime.today())
     st.write("---")
     
-    # 1. 십일조 / 기부
     st.write("#### 1️⃣ 십일조 및 헌금/기부")
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -259,8 +268,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
         donation_pay = st.selectbox("결제/이체 수단", payment_methods, index=payment_methods.index("계좌이체") if "계좌이체" in payment_methods else 0, key="don_pay")
 
     st.write("---")
-    
-    # 2. 보험료 세부 (본인, 배우자, 자녀, 실비, 암, 운전자 등)
     st.write("#### 2️⃣ 보험료 세부 항목")
     b1, b2 = st.columns([2, 1])
     with b1:
@@ -287,8 +294,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
         ins_other_pay = st.selectbox("결제 수단", payment_methods, key="ins_other_pay")
 
     st.write("---")
-
-    # 3. 통신료 세부 (휴대폰 vs 인터넷/TV)
     st.write("#### 3️⃣ 통신비 세부 항목")
     t1, t2 = st.columns([2, 1])
     with t1:
@@ -303,8 +308,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
         tel_net_pay = st.selectbox("결제 수단", payment_methods, key="tel_net_pay")
 
     st.write("---")
-
-    # 4. 관리비 및 공과금 세부
     st.write("#### 4️⃣ 관리비 및 공과금 세부 항목")
     u1, u2 = st.columns([2, 1])
     with u1:
@@ -325,8 +328,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
         util_elec_pay = st.selectbox("결제 수단", payment_methods, key="util_elec_pay")
 
     st.write("---")
-
-    # 5. 정기 구독료 및 기타 고정비
     st.write("#### 5️⃣ OTT 구독료 / 기타 정기지출")
     s1, s2 = st.columns([2, 1])
     with s1:
@@ -341,10 +342,7 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
         sub_rent_pay = st.selectbox("결제 수단", payment_methods, index=payment_methods.index("계좌이체") if "계좌이체" in payment_methods else 0, key="sub_rent_pay")
 
     st.write("---")
-
-    # 일괄 전송 버튼
     if st.button("🚀 이번 달 고정비 일괄 구글 시트 전송", use_container_width=True, type="primary"):
-        # 등록할 모든 세부 리스트 (대분류, 세부항목명, 금액, 결제수단, 메모)
         fixed_items = [
             ("십일조/기부", "십일조", tithe_amt, tithe_pay, "정기 고정비 - 십일조"),
             ("십일조/기부", "기타 헌금/후원", donation_amt, donation_pay, "정기 고정비 - 후원금"),
@@ -367,7 +365,7 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
             
             new_rows = []
             for cat, sub, amt, pay_m, memo_txt in fixed_items:
-                if amt > 0:  # 0원이 아닌 항목만 생성
+                if amt > 0:
                     new_rows.append({
                         "id": start_id,
                         "date": str(target_date),
@@ -386,10 +384,10 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                 if save_data(updated_df):
                     st.success(f"🎉 총 {len(new_rows)}건의 세부 고정 지출이 구글 시트에 정확히 등록되었습니다!")
             else:
-                st.warning("금액이 입력된 항목이 없습니다. (0원 이상인 항목만 등록됩니다)")
+                st.warning("금액이 입력된 항목이 없습니다.")
 
 # -------------------------------------------------------------
-# 메뉴 5: 🏷️ 분류 및 결제수단 관리
+# 메뉴 5: 분류 관리
 # -------------------------------------------------------------
 elif menu == "🏷️ 분류 및 결제수단 관리":
     st.subheader("🏷️ 카테고리 및 결제수단 맞춤 설정")
