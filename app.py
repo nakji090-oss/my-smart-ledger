@@ -12,36 +12,42 @@ st.set_page_config(page_title="스마트 가계부", page_icon="💰", layout="w
 
 st.markdown("""
 <style>
-    /* 1. 우측 상단 툴바 (GitHub, Deploy, 점3개 등) 완전히 숨기기 */
+    /* 1. 우측 상단 메뉴들 (Fork, GitHub 아이콘, 점 3개 등) 강제 숨김 */
+    header[data-testid="stHeader"] .stAppToolbar {
+        display: none !important;
+    }
     [data-testid="stToolbar"] {
         display: none !important;
-        visibility: hidden !important;
     }
-
-    /* 2. 하단 워터마크(Made with Streamlit) 완전히 숨기기 */
-    footer {
+    .stAppDeployButton {
         display: none !important;
-        visibility: hidden !important;
     }
-
-    /* 3. Streamlit Cloud 빨간색 배너(Hosted with Streamlit) 강제 차단 */
-    div[class^="viewerBadge"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-    }
+    
+    /* 2. 하단 'Hosted with Streamlit' 빨간 배너 강제 삭제 */
     a[href^="https://streamlit.io/cloud"] {
         display: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+    }
+    div[class*="viewerBadge"] {
+        display: none !important;
+        opacity: 0 !important;
     }
 
-    /* 4. 왼쪽 ☰ 메뉴(햄버거 버튼)는 제일 위로 올려서 무조건 보이도록 강제 유지 */
+    /* 3. 하단 기본 워터마크(footer) 숨김 */
+    footer {
+        display: none !important;
+    }
+
+    /* 4. ⭐ 왼쪽 메뉴 열기 버튼 (>> 모양) 절대 보호 및 우선순위 최상단 */
     [data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
-        z-index: 99999 !important;
+        opacity: 1 !important;
+        z-index: 999999 !important;
     }
 
-    /* 5. 모바일 화면 최적화 (본문이 ☰ 메뉴 버튼을 가리지 않도록 상단 여백 넉넉히 확보) */
+    /* 5. 모바일 본문 여백 확보 (내용이 위로 올라가 메뉴 버튼을 가리지 않게 처리) */
     .main .block-container {
         padding-top: 3.5rem !important;
         padding-bottom: 2.5rem !important;
@@ -50,7 +56,7 @@ st.markdown("""
         max-width: 1000px;
     }
 
-    /* 6. 버튼 및 입력창 디자인 */
+    /* 6. 모바일 버튼, 입력창 UI 최적화 */
     .stButton > button {
         border-radius: 12px;
         font-weight: 600;
@@ -396,7 +402,7 @@ if menu == "📝 내역 입력":
     st.subheader("📝 새로운 수입 / 지출 입력")
     
     rec_type = st.radio("구분을 선택하세요", ["지출", "수입"], horizontal=True, key="entry_rec_type")
-    
+
     with st.form("record_form"):
         col1, col2 = st.columns(2)
         with col1:
