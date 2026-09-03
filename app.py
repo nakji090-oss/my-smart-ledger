@@ -22,11 +22,18 @@ if "connections" not in st.secrets or "gsheets" not in st.secrets["connections"]
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # -------------------------------------------------------------
-# 2. 모바일 최적화 커스텀 스타일 (CSS)
+# 2. 세션 상태 초기화 (연속 입력 편의성 기능)
+# -------------------------------------------------------------
+if 'last_date' not in st.session_state:
+    st.session_state.last_date = datetime.today()
+if 'last_payment' not in st.session_state:
+    st.session_state.last_payment = None
+
+# -------------------------------------------------------------
+# 3. 모바일 최적화 커스텀 스타일 (CSS)
 # -------------------------------------------------------------
 st.markdown("""
 <style>
-    /* 상단 우측 아이콘 및 하단 워터마크 강제 숨김 (메뉴 버튼 유지) */
     [data-testid="stHeaderActionElements"], div[class^="viewerBadge"], footer { display: none !important; }
     
     .main .block-container {
@@ -56,7 +63,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 3. 구글 시트 DB 헬퍼 함수
+# 4. 구글 시트 DB 헬퍼 함수
 # -------------------------------------------------------------
 def load_gsheet(worksheet_name, default_cols):
     try:
@@ -73,7 +80,6 @@ def save_gsheet(worksheet_name, df):
 def load_settings():
     df = load_gsheet("settings", ['setting_type', 'name'])
     if df.empty:
-        # 최초 실행 시 기본 세팅 생성
         default_settings = pd.DataFrame([
             {'setting_type': 'expense', 'name': '식비'},
             {'setting_type': 'expense', 'name': '주거/통신'},
@@ -95,11 +101,6 @@ def add_setting(stype, name):
         new_row = pd.DataFrame([{'setting_type': stype, 'name': name}])
         df = pd.concat([df, new_row], ignore_index=True)
         save_gsheet("settings", df)
-
-def delete_setting(stype, name):
-    df = load_gsheet("settings", ['setting_type', 'name'])
-    df = df[~((df['setting_type'] == stype) & (df['name'] == name))]
-    save_gsheet("settings", df)
 
 def load_records():
     return load_gsheet("records", ['id', 'date', 'category', 'sub_category', 'amount', 'payment_method', 'is_fixed', 'memo'])
@@ -161,7 +162,7 @@ def import_records_from_df(import_df):
     df = load_records()
     required_cols = ['date', 'category', 'amount', 'payment_method']
     if not all(col in import_df.columns for col in required_cols):
-        return False, "엑셀 필수 열(date, category, amount, payment_method)이 누락되었습니다."
+        return False, "엑셀 필수 열이 누락되었습니다."
     
     new_rows = []
     for _, row in import_df.iterrows():
@@ -180,7 +181,7 @@ def import_records_from_df(import_df):
     if new_rows:
         df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) if not df.empty else pd.DataFrame(new_rows)
         save_gsheet("records", df)
-    return True, f"총 {len(new_rows)}건의 지출 내역을 성공적으로 복원했습니다."
+    return True, f"총 {len(new_rows)}건의 내역 복원 완료"
 
 def load_fixed_templates():
     return load_gsheet("fixed_templates", ['id', 'category', 'sub_category', 'default_amount', 'default_payment', 'memo'])
@@ -226,8 +227,39 @@ def save_edited_fixed_templates(orig_df, edited_df):
         df = pd.concat([df, pd.DataFrame(new_rows)], ignore_index=True) if not df.empty else pd.DataFrame(new_rows)
     save_gsheet("fixed_templates", df)
 
+def update_template_defaults(t_id, amount, payment):
+    df = load_fixed_templates()
+    if pd.notna(t_id) and t_id in df['id'].values:
+        idx = df.index[df['id'] == t_id][0]
+        df.at[idx, 'default_amount'] = int(amount)
+        df.at[idx, 'default_payment'] = payment
+        save_gsheet("fixed_templates", df)
+
+def get_budget(ym):
+    try:
+        df = conn.read(worksheet="budgets", ttl=0)
+        if df.empty: return 0
+        match = df[df['year_month'] == ym]
+        return int(match.iloc[0]['budget_amount']) if not match.empty else 0
+    except:
+        save_gsheet("budgets", pd.DataFrame(columns=['year_month', 'budget_amount']))
+        return 0
+
+def set_budget(ym, amount):
+    try:
+        df = conn.read(worksheet="budgets", ttl=0)
+    except:
+        df = pd.DataFrame(columns=['year_month', 'budget_amount'])
+        
+    if not df.empty and ym in df['year_month'].values:
+        df.loc[df['year_month'] == ym, 'budget_amount'] = int(amount)
+    else:
+        new_row = pd.DataFrame([{'year_month': ym, 'budget_amount': int(amount)}])
+        df = pd.concat([df, new_row], ignore_index=True) if not df.empty else new_row
+    save_gsheet("budgets", df)
+
 # -------------------------------------------------------------
-# 4. 메인 UI & 메뉴
+# 5. 메인 UI & 메뉴
 # -------------------------------------------------------------
 expense_categories, payment_methods = load_settings()
 
@@ -242,7 +274,7 @@ menu = st.sidebar.radio("📌 바로가기 메뉴", [
 ])
 
 # -------------------------------------------------------------
-# 메뉴 1: 지출 내역 입력
+# 메뉴 1: 지출 내역 입력 (영수증 연속 입력 적용)
 # -------------------------------------------------------------
 if menu == "📝 지출 내역 입력":
     st.subheader("📝 새로운 지출 입력")
@@ -250,7 +282,7 @@ if menu == "📝 지출 내역 입력":
     with st.form("record_form", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            rec_date = st.date_input("날짜", datetime.today())
+            rec_date = st.date_input("날짜", st.session_state.last_date)
         with col2:
             amount = st.number_input("금액 (원)", min_value=0, step=1000, value=0)
             
@@ -263,7 +295,10 @@ if menu == "📝 지출 내역 입력":
             
         col5, col6 = st.columns(2)
         with col5:
-            payment_method = st.selectbox("결제 수단 / 카드", payment_methods + ["➕ 새 결제수단 직접 입력"])
+            # 이전 결제수단 기억 적용
+            pay_idx = payment_methods.index(st.session_state.last_payment) if st.session_state.last_payment in payment_methods else 0
+            payment_options = payment_methods + ["➕ 새 결제수단 직접 입력"]
+            payment_method = st.selectbox("결제 수단 / 카드", payment_options, index=pay_idx)
             custom_method = st.text_input("새 결제수단명", placeholder="직접 입력") if payment_method == "➕ 새 결제수단 직접 입력" else None
         with col6:
             memo = st.text_input("메모 / 사용처", placeholder="예: 스타벅스 남양주점, 쿠팡")
@@ -290,60 +325,75 @@ if menu == "📝 지출 내역 입력":
                     add_setting("expense", custom_cat.strip())
                 if custom_method:
                     add_setting("payment", custom_method.strip())
+                
+                # ⭐️ 저장 성공 시 날짜와 결제수단을 세션에 기억
+                st.session_state.last_date = rec_date
+                st.session_state.last_payment = final_method
+                
                 st.success("🎉 지출 내역이 성공적으로 저장되었습니다!")
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 2: 월별 지출 분석
+# 메뉴 2: 월별 지출 분석 (이번 달 무조건 우선 표시)
 # -------------------------------------------------------------
 elif menu == "📊 월별 지출 분석":
     st.subheader("📊 월별 지출 심층 분석")
     df = load_records()
     
+    current_ym = datetime.today().strftime('%Y-%m')
+    
     if df.empty:
-        st.info("기록된 데이터가 없습니다. 먼저 지출 내역을 입력해주세요.")
+        df['year_month'] = []
+        all_months = [current_ym]
     else:
         df['year_month'] = df['date'].apply(lambda x: str(x)[:7])
-        selected_month = st.selectbox("조회할 월 선택", sorted(df['year_month'].unique(), reverse=True))
-        expense_df = df[df['year_month'] == selected_month]
-        
-        total_expense = expense_df['amount'].sum()
-        fixed_expense = expense_df[expense_df['is_fixed'] == 1]['amount'].sum()
-        var_expense = expense_df[expense_df['is_fixed'] == 0]['amount'].sum()
-        
-        st.metric("총 지출", f"{total_expense:,} 원")
-        
-        if not expense_df.empty:
-            st.write("#### 🏆 이번 달 지출 TOP 3 카테고리")
-            top3 = expense_df.groupby('category')['amount'].sum().reset_index().sort_values('amount', ascending=False).head(3)
-            t_cols = st.columns(len(top3))
-            for i, (_, row) in enumerate(top3.iterrows()):
-                pct = (row['amount'] / total_expense * 100) if total_expense > 0 else 0
-                with t_cols[i]:
-                    st.markdown(f"""
-                    <div class="top-card">
-                        <strong>{i+1}위. {row['category']}</strong><br/>
-                        <span style="font-size: 16px; font-weight: bold; color: #312e81;">{row['amount']:,} 원</span>
-                        <span style="font-size: 12px; color: #6b7280;">({pct:.1f}%)</span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-            st.write("---")
-            st.write("#### 🏷️ 카테고리별 지출 비중")
-            cat_sum = expense_df.groupby('category')['amount'].sum().reset_index()
-            fig_cat = px.pie(cat_sum, values='amount', names='category', hole=0.35)
-            fig_cat.update_layout(margin=dict(t=20, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3))
-            st.plotly_chart(fig_cat, use_container_width=True)
+        # ⭐️ 기존 데이터의 달 + 현재 달을 합쳐 무조건 현재 달이 목록에 있게 함
+        all_months = sorted(list(set(df['year_month'].tolist() + [current_ym])), reverse=True)
+    
+    default_idx = all_months.index(current_ym) if current_ym in all_months else 0
+    selected_month = st.selectbox("조회할 월 선택", all_months, index=default_idx)
+    
+    expense_df = df[df['year_month'] == selected_month] if not df.empty else pd.DataFrame()
+    
+    total_expense = expense_df['amount'].sum() if not expense_df.empty else 0
+    fixed_expense = expense_df[expense_df['is_fixed'] == 1]['amount'].sum() if not expense_df.empty else 0
+    var_expense = expense_df[expense_df['is_fixed'] == 0]['amount'].sum() if not expense_df.empty else 0
+    
+    st.metric("총 지출", f"{total_expense:,} 원")
+    
+    if not expense_df.empty and total_expense > 0:
+        st.write("#### 🏆 이번 달 지출 TOP 3 카테고리")
+        top3 = expense_df.groupby('category')['amount'].sum().reset_index().sort_values('amount', ascending=False).head(3)
+        t_cols = st.columns(len(top3))
+        for i, (_, row) in enumerate(top3.iterrows()):
+            pct = (row['amount'] / total_expense * 100) if total_expense > 0 else 0
+            with t_cols[i]:
+                st.markdown(f"""
+                <div class="top-card">
+                    <strong>{i+1}위. {row['category']}</strong><br/>
+                    <span style="font-size: 16px; font-weight: bold; color: #312e81;">{row['amount']:,} 원</span>
+                    <span style="font-size: 12px; color: #6b7280;">({pct:.1f}%)</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+        st.write("---")
+        st.write("#### 🏷️ 카테고리별 지출 비중")
+        cat_sum = expense_df.groupby('category')['amount'].sum().reset_index()
+        fig_cat = px.pie(cat_sum, values='amount', names='category', hole=0.35)
+        fig_cat.update_layout(margin=dict(t=20, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3))
+        st.plotly_chart(fig_cat, use_container_width=True)
 
-            st.write("---")
-            st.write("#### ⚖️ 고정지출 vs 변동지출")
-            fc1, fc2 = st.columns(2)
-            fc1.metric("📌 고정지출", f"{fixed_expense:,} 원")
-            fc2.metric("🛒 변동지출", f"{var_expense:,} 원")
-            
-            fig = px.pie(values=[fixed_expense, var_expense], names=["고정지출", "변동지출"], hole=0.45)
-            fig.update_layout(margin=dict(t=30, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2))
-            st.plotly_chart(fig, use_container_width=True)
+        st.write("---")
+        st.write("#### ⚖️ 고정지출 vs 변동지출")
+        fc1, fc2 = st.columns(2)
+        fc1.metric("📌 고정지출", f"{fixed_expense:,} 원")
+        fc2.metric("🛒 변동지출", f"{var_expense:,} 원")
+        
+        fig = px.pie(values=[fixed_expense, var_expense], names=["고정지출", "변동지출"], hole=0.45)
+        fig.update_layout(margin=dict(t=30, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2))
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("해당 월의 지출 데이터가 없습니다.")
 
 # -------------------------------------------------------------
 # 메뉴 3: 월별 지출 비교 (MoM)
@@ -369,8 +419,12 @@ elif menu == "📈 월별 지출 비교 (MoM)":
         st.dataframe(monthly_summary, use_container_width=True)
         
         fig_trend = px.bar(
-            monthly_summary, x='year_month', y=['고정지출', '변동지출'], 
-            title="월별 지출 구조 추이", barmode='stack', text_auto=True
+            monthly_summary, 
+            x='year_month', 
+            y=['고정지출', '변동지출'], 
+            title="월별 지출 구조 추이",
+            barmode='stack',
+            text_auto=True
         )
         fig_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2), xaxis_title="")
         st.plotly_chart(fig_trend, use_container_width=True)
@@ -398,12 +452,15 @@ elif menu == "📋 전체 내역 및 바로 수정":
         if df.empty:
             st.info("등록된 지출 내역이 없습니다.")
         else:
+            current_ym = datetime.today().strftime('%Y-%m')
             df['year_month'] = df['date'].apply(lambda x: str(x)[:7])
-            months = ["전체 월"] + sorted(df['year_month'].unique().tolist(), reverse=True)
+            all_months = sorted(list(set(df['year_month'].tolist() + [current_ym])), reverse=True)
+            months = ["전체 월"] + all_months
             
             s_col1, s_col2 = st.columns([1, 2])
             with s_col1:
-                sel_m = st.selectbox("조회할 월 선택", months)
+                default_idx = months.index(current_ym) if current_ym in months else 0
+                sel_m = st.selectbox("조회할 월 선택", months, index=default_idx)
             with s_col2:
                 kw = st.text_input("🔎 검색어 (사용처, 상세항목, 카테고리)", placeholder="예: 스타벅스, 신한카드")
                 
@@ -420,6 +477,8 @@ elif menu == "📋 전체 내역 및 바로 수정":
             st.caption(f"💡 **수정:** 표의 칸을 클릭하여 내용을 변경하세요.<br>💡 **삭제:** 지우고 싶은 항목의 **[🗑️ 삭제]** 체크박스를 누른 후 <b>저장</b>을 누르세요.<br>(조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)", unsafe_allow_html=True)
             
             df_edit = filtered_df.drop(columns=['year_month']).copy()
+            if 'type' in df_edit.columns:
+                df_edit = df_edit.drop(columns=['type'])
             df_edit.insert(0, '삭제', False)
             
             df_edit['date'] = pd.to_datetime(df_edit['date'], errors='coerce').dt.date
@@ -447,7 +506,7 @@ elif menu == "📋 전체 내역 및 바로 수정":
             with col_save1:
                 if st.button("💾 체크된 항목 삭제 및 수정사항 전체 저장", type="primary", use_container_width=True):
                     upsert_edited_records(filtered_df, edited_data)
-                    st.success("🎉 수정한 내용과 삭제된 항목이 구글 시트에 안전하게 동기화되었습니다!")
+                    st.success("🎉 변경 사항이 구글 시트에 안전하게 동기화되었습니다!")
                     st.rerun()
             with col_save2:
                 if st.button("🔄 원래대로 복구", use_container_width=True):
@@ -459,9 +518,12 @@ elif menu == "📋 전체 내역 및 바로 수정":
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='지출_내역')
+            
+            # ⭐️ 백업 파일명에 시간과 분까지 기록 (제안 4 적용)
+            timestamp_str = datetime.today().strftime('%Y%m%d_%H%M')
             st.download_button(
                 label="📥 가계부 전체 엑셀(XLSX) 다운로드 백업", data=output.getvalue(),
-                file_name=f"지출내역_백업_{datetime.today().strftime('%Y%m%d')}.xlsx",
+                file_name=f"지출내역_백업_{timestamp_str}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True
             )
         else:
@@ -487,22 +549,36 @@ elif menu == "📋 전체 내역 및 바로 수정":
                 st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록 (통합됨)
+# 메뉴 5: 정기 고정비 일괄 등록 (이중 등록 경고 추가)
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 템플릿 관리")
+    
+    # ⭐️ 이번 달 고정지출 중복 등록 경고 로직 (제안 2 적용)
+    records_df = load_records()
+    current_ym = datetime.today().strftime('%Y-%m')
+    has_fixed_this_month = False
+    
+    if not records_df.empty:
+        records_df['ym'] = records_df['date'].apply(lambda x: str(x)[:7])
+        fixed_this_month = records_df[(records_df['ym'] == current_ym) & (records_df['is_fixed'] == 1)]
+        if not fixed_this_month.empty:
+            has_fixed_this_month = True
+            st.warning(f"🚨 주의: 이번 달({current_ym})에 이미 등록된 고정 지출 이력이 {len(fixed_this_month)}건 있습니다. 이중 등록하지 않도록 주의하세요!")
+
     st.info("💡 **표 안에서 고정비 항목을 바로 추가/수정/삭제**할 수 있습니다. 가계부에 일괄 등록할 항목은 왼쪽 **'☑️ 이번달 등록'** 칸을 체크하세요.")
     
     df_fixed = load_fixed_templates()
-    
     df_edit = df_fixed.copy()
-    df_edit.insert(0, '이번달 등록', True)
+    
+    # 이미 등록된 달이면 기본 체크를 해제하여 실수 방지
+    df_edit.insert(0, '이번달 등록', not has_fixed_this_month)
     df_edit.insert(1, '템플릿 삭제', False)
     
     edited_data = st.data_editor(
         df_edit,
         column_config={
-            "이번달 등록": st.column_config.CheckboxColumn("☑️ 이번달 등록", default=True),
+            "이번달 등록": st.column_config.CheckboxColumn("☑️ 이번달 등록"),
             "템플릿 삭제": st.column_config.CheckboxColumn("🗑️ 템플릿 삭제", default=False),
             "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
             "category": st.column_config.SelectboxColumn("카테고리", options=expense_categories, required=True),
@@ -526,7 +602,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     target_date = st.date_input("등록 기준 일자", datetime.today())
     
     if st.button("🚀 위 표에서 체크된 항목을 가계부에 일괄 등록", use_container_width=True, type="primary"):
-        # 등록 전 템플릿 변경사항 먼저 안전하게 저장
         save_edited_fixed_templates(df_fixed, edited_data)
 
         to_register = edited_data[(edited_data['이번달 등록'] == True) & (edited_data['템플릿 삭제'] == False)]
@@ -538,6 +613,7 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                 amt = int(pd.to_numeric(row['default_amount'], errors='coerce') or 0)
                 if amt > 0:
                     add_record(target_date, row['category'], row['sub_category'], amt, row['default_payment'], True, str(row.get('memo', '')))
+                    update_template_defaults(row.get('id'), amt, row['default_payment'])
                     count += 1
             st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 등록되었습니다!")
 
@@ -545,35 +621,32 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
 # 메뉴 6: 분류 관리
 # -------------------------------------------------------------
 elif menu == "🏷️ 분류 및 결제수단 관리":
-    st.subheader("🏷️ 카테고리 및 결제수단 관리")
+    st.subheader("🏷️ 카테고리 및 결제수단 순서·관리")
+    st.info("💡 **텍스트 박스 안에서 줄바꿈으로 순서를 자유롭게 변경**할 수 있습니다.\n새로운 항목을 쓰면 '추가', 지우면 '삭제'가 되며 아래 저장 버튼을 눌러야 반영됩니다.")
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.write("##### 🛒 지출 카테고리")
-        st.write(expense_categories)
-        new_exp = st.text_input("새 지출 카테고리 추가")
-        if st.button("지출 카테고리 추가", use_container_width=True) and new_exp:
-            add_setting("expense", new_exp.strip())
-            st.success(f"'{new_exp}' 추가 완료!")
-            st.rerun()
-                
-        del_exp = st.selectbox("삭제할 지출 카테고리", ["선택 안 함"] + expense_categories)
-        if st.button("지출 카테고리 삭제", use_container_width=True) and del_exp != "선택 안 함":
-            delete_setting("expense", del_exp)
-            st.warning(f"'{del_exp}' 삭제 완료!")
-            st.rerun()
+        exp_text = st.text_area("항목 편집 (위에서 차례대로 표시)", value="\n".join(expense_categories), height=350)
 
     with col2:
         st.write("##### 💳 결제수단 / 카드")
-        st.write(payment_methods)
-        new_pay = st.text_input("새 카드/결제수단 추가")
-        if st.button("결제수단 추가", use_container_width=True) and new_pay:
-            add_setting("payment", new_pay.strip())
-            st.success(f"'{new_pay}' 추가 완료!")
-            st.rerun()
-                
-        del_pay = st.selectbox("삭제할 결제수단", ["선택 안 함"] + payment_methods)
-        if st.button("결제수단 삭제", use_container_width=True) and del_pay != "선택 안 함":
-            delete_setting("payment", del_pay)
-            st.warning(f"'{del_pay}' 삭제 완료!")
-            st.rerun()
+        pay_text = st.text_area("항목 편집 (위에서 차례대로 표시)", value="\n".join(payment_methods), height=350)
+
+    st.write("")
+    if st.button("💾 변경된 순서 및 항목 전체 저장", type="primary", use_container_width=True):
+        new_expenses = list(dict.fromkeys([x.strip() for x in exp_text.split('\n') if x.strip()]))
+        new_payments = list(dict.fromkeys([x.strip() for x in pay_text.split('\n') if x.strip()]))
+        
+        new_settings = []
+        for e in new_expenses:
+            new_settings.append({'setting_type': 'expense', 'name': e})
+        for p in new_payments:
+            new_settings.append({'setting_type': 'payment', 'name': p})
+            
+        df_new_settings = pd.DataFrame(new_settings, columns=['setting_type', 'name'])
+        save_gsheet("settings", df_new_settings)
+        
+        st.success("🎉 카테고리 및 결제수단이 성공적으로 업데이트되었습니다!")
+        st.rerun()
