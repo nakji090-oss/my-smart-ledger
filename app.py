@@ -22,12 +22,14 @@ if "connections" not in st.secrets or "gsheets" not in st.secrets["connections"]
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # -------------------------------------------------------------
-# 2. 세션 상태 초기화 (연속 입력 편의성 기능)
+# 2. 세션 상태 초기화
 # -------------------------------------------------------------
 if 'last_date' not in st.session_state:
     st.session_state.last_date = datetime.today()
 if 'last_payment' not in st.session_state:
     st.session_state.last_payment = None
+if 'confirm_batch' not in st.session_state:
+    st.session_state.confirm_batch = False
 
 # -------------------------------------------------------------
 # 3. 모바일 최적화 커스텀 스타일 (CSS)
@@ -529,7 +531,7 @@ elif menu == "📋 전체 내역 및 바로 수정":
                 st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록
+# 메뉴 5: 정기 고정비 일괄 등록 (최종 확인 단계 추가 & 버그 수정)
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 템플릿 관리")
@@ -538,9 +540,11 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     current_ym = datetime.today().strftime('%Y-%m')
     has_fixed_this_month = False
     
+    # ⭐️ 문자와 숫자를 완벽하게 일치시켜서 삭제 후 재등록이 안되던 버그 완벽 해결
     if not records_df.empty:
-        records_df['ym'] = records_df['date'].apply(lambda x: str(x)[:7])
-        fixed_this_month = records_df[(records_df['ym'] == current_ym) & (records_df['is_fixed'] == 1)]
+        records_df['ym'] = pd.to_datetime(records_df['date'], errors='coerce').dt.strftime('%Y-%m')
+        records_df['is_fixed_safe'] = pd.to_numeric(records_df['is_fixed'], errors='coerce').fillna(0).astype(int)
+        fixed_this_month = records_df[(records_df['ym'] == current_ym) & (records_df['is_fixed_safe'] == 1)]
         if not fixed_this_month.empty:
             has_fixed_this_month = True
             st.warning(f"🚨 주의: 이번 달({current_ym})에 이미 등록된 고정 지출 이력이 {len(fixed_this_month)}건 있습니다. 이중 등록하지 않도록 주의하세요!")
@@ -586,54 +590,77 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.write("#### 🚀 이번 달 가계부 일괄 등록 실행")
     target_date = st.date_input("등록 기준 일자", datetime.today())
     
-    if st.button("🚀 위 표에서 체크된 항목을 가계부에 일괄 등록", use_container_width=True, type="primary"):
-        # 1. 템플릿 수정사항 먼저 저장
-        save_edited_fixed_templates(df_fixed, edited_data)
-
+    # ⭐️ 1단계: 바로 등록하지 않고 확인(미리보기) 단계로 넘어갑니다.
+    if st.button("🔍 체크된 항목 확인 및 일괄 등록 준비", use_container_width=True):
+        save_edited_fixed_templates(df_fixed, edited_data) # 표 수정사항 우선 저장
+        st.session_state.confirm_batch = True
+        
+    # ⭐️ 2단계: 최종 확인 창 (confirm_batch가 True일 때만 보임)
+    if st.session_state.get('confirm_batch', False):
+        st.markdown("### 📋 일괄 등록 전 최종 확인")
         to_register = edited_data[(edited_data['이번달 등록'] == True) & (edited_data['템플릿 삭제'] == False)]
+        
         if to_register.empty:
-            st.warning("등록할 항목이 선택되지 않았습니다.")
+            st.warning("☑️ '이번달 등록' 칸에 체크된 항목이 없습니다. 표에서 등록할 항목을 체크한 후 다시 버튼을 눌러주세요.")
+            st.session_state.confirm_batch = False
         else:
-            # ⭐️ [핵심 수정] 루프 안에서 통신하지 않고, 한 번에 데이터를 묶어서 저장합니다.
-            df_records = load_records()
-            df_templates = load_fixed_templates()
+            # 등록될 항목만 뽑아서 깔끔하게 보여주기
+            st.dataframe(
+                to_register[['category', 'sub_category', 'default_amount', 'default_payment', 'memo']],
+                hide_index=True, use_container_width=True
+            )
+            total_amt = to_register['default_amount'].sum()
+            st.info(f"✅ 총 **{len(to_register)}건**, 합계 **{total_amt:,}원**을 '{target_date.strftime('%Y-%m-%d')}' 날짜로 가계부에 일괄 등록합니다. 맞습니까?")
             
-            new_record_rows = []
-            count = 0
-            
-            for _, row in to_register.iterrows():
-                amt = int(pd.to_numeric(row['default_amount'], errors='coerce') or 0)
-                if amt > 0:
-                    new_id = int(df_records['id'].max() + 1) if not df_records.empty and pd.notna(df_records['id'].max()) else 1
-                    new_id += len(new_record_rows)
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("🚀 네, 이대로 최종 등록 실행", type="primary", use_container_width=True):
+                    df_records = load_records()
+                    df_templates = load_fixed_templates()
                     
-                    new_record_rows.append({
-                        'id': new_id, 
-                        'date': target_date.strftime("%Y-%m-%d"), 
-                        'category': str(row['category']), 
-                        'sub_category': str(row['sub_category']), 
-                        'amount': amt, 
-                        'payment_method': str(row['default_payment']), 
-                        'is_fixed': 1, 
-                        'memo': str(row.get('memo', ''))
-                    })
+                    new_record_rows = []
+                    count = 0
                     
-                    t_id = row.get('id')
-                    if pd.notna(t_id) and t_id in df_templates['id'].values:
-                        idx = df_templates.index[df_templates['id'] == t_id][0]
-                        df_templates.at[idx, 'default_amount'] = amt
-                        df_templates.at[idx, 'default_payment'] = str(row['default_payment'])
+                    for _, row in to_register.iterrows():
+                        amt = int(pd.to_numeric(row['default_amount'], errors='coerce') or 0)
+                        if amt > 0:
+                            new_id = int(df_records['id'].max() + 1) if not df_records.empty and pd.notna(df_records['id'].max()) else 1
+                            new_id += len(new_record_rows)
+                            
+                            new_record_rows.append({
+                                'id': new_id, 
+                                'date': target_date.strftime("%Y-%m-%d"), 
+                                'category': str(row['category']), 
+                                'sub_category': str(row['sub_category']), 
+                                'amount': amt, 
+                                'payment_method': str(row['default_payment']), 
+                                'is_fixed': 1, 
+                                'memo': str(row.get('memo', ''))
+                            })
+                            
+                            # 기본값도 업데이트
+                            t_id = row.get('id')
+                            if pd.notna(t_id) and t_id in df_templates['id'].values:
+                                idx = df_templates.index[df_templates['id'] == t_id][0]
+                                df_templates.at[idx, 'default_amount'] = amt
+                                df_templates.at[idx, 'default_payment'] = str(row['default_payment'])
+                                
+                            count += 1
+                    
+                    # 시트에 한 번에 밀어넣기
+                    if new_record_rows:
+                        df_records = pd.concat([df_records, pd.DataFrame(new_record_rows)], ignore_index=True) if not df_records.empty else pd.DataFrame(new_record_rows)
+                        save_gsheet("records", df_records)
+                        save_gsheet("fixed_templates", df_templates)
                         
-                    count += 1
-            
-            # 묶어둔 데이터를 딱 1번만 구글 시트에 밀어넣기
-            if new_record_rows:
-                df_records = pd.concat([df_records, pd.DataFrame(new_record_rows)], ignore_index=True) if not df_records.empty else pd.DataFrame(new_record_rows)
-                save_gsheet("records", df_records)
-                save_gsheet("fixed_templates", df_templates)
-                
-            st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 일괄 등록되었습니다!")
-            st.rerun()
+                    st.session_state.confirm_batch = False # 등록 완료 후 확인 창 숨기기
+                    st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 일괄 등록되었습니다!")
+                    st.rerun()
+
+            with c2:
+                if st.button("❌ 취소", use_container_width=True):
+                    st.session_state.confirm_batch = False
+                    st.rerun()
 
 # -------------------------------------------------------------
 # 메뉴 6: 분류 관리
