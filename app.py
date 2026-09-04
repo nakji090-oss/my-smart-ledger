@@ -63,7 +63,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 4. 구글 시트 DB 헬퍼 함수
+# 4. 구글 시트 DB 헬퍼 함수 (에러 방어 로직 강력 강화 ⭐)
 # -------------------------------------------------------------
 def load_gsheet(worksheet_name, default_cols):
     try:
@@ -71,8 +71,10 @@ def load_gsheet(worksheet_name, default_cols):
         if df.empty and len(df.columns) == 0:
             return pd.DataFrame(columns=default_cols)
         return df.dropna(how='all')
-    except Exception:
-        return pd.DataFrame(columns=default_cols)
+    except Exception as e:
+        # 일시적 통신 오류 시 빈 데이터로 덮어쓰는 것을 막기 위해 강제 중단
+        st.error("🚨 구글 서버와의 통신이 일시적으로 지연되었습니다. 데이터 덮어쓰기 방지를 위해 앱을 일시 정지합니다. 화면을 새로고침 해주세요.")
+        st.stop()
 
 def save_gsheet(worksheet_name, df):
     conn.update(worksheet=worksheet_name, data=df)
@@ -80,16 +82,7 @@ def save_gsheet(worksheet_name, df):
 def load_settings():
     df = load_gsheet("settings", ['setting_type', 'name'])
     if df.empty:
-        default_settings = pd.DataFrame([
-            {'setting_type': 'expense', 'name': '식비'},
-            {'setting_type': 'expense', 'name': '주거/통신'},
-            {'setting_type': 'expense', 'name': '공과금'},
-            {'setting_type': 'expense', 'name': '보험료'},
-            {'setting_type': 'payment', 'name': '신한카드'},
-            {'setting_type': 'payment', 'name': '계좌이체'}
-        ])
-        save_gsheet("settings", default_settings)
-        df = default_settings
+        return [], []
         
     expenses = df[df['setting_type'] == 'expense']['name'].dropna().tolist()
     payments = df[df['setting_type'] == 'payment']['name'].dropna().tolist()
@@ -438,7 +431,6 @@ elif menu == "📋 전체 내역 및 바로 수정":
             with s_col2:
                 kw = st.text_input("🔎 검색어 (사용처, 상세항목, 카테고리)", placeholder="예: 스타벅스, 신한카드")
 
-            # ⭐️ 정렬 기능 추가 UI
             sort_c1, sort_c2 = st.columns(2)
             with sort_c1:
                 sort_key = st.selectbox("🔽 정렬 기준", ["날짜", "금액", "카테고리", "상세 항목", "결제 수단"])
@@ -471,7 +463,6 @@ elif menu == "📋 전체 내역 및 바로 수정":
             df_edit['is_fixed'] = df_edit['is_fixed'].apply(lambda x: True if str(x).lower() in ['1', '1.0', 'true'] else False).astype(bool)
             df_edit['memo'] = df_edit['memo'].fillna("").astype(str)
             
-            # ⭐️ 선택한 기준에 맞춰 데이터 정렬 적용
             sort_col_map = {"날짜": "date", "금액": "amount", "카테고리": "category", "상세 항목": "sub_category", "결제 수단": "payment_method"}
             is_asc = True if "오름차순" in sort_dir else False
             df_edit = df_edit.sort_values(by=[sort_col_map[sort_key], 'id'], ascending=[is_asc, False])
