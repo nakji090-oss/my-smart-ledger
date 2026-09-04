@@ -132,8 +132,8 @@ def upsert_edited_records(original_filtered_df, edited_df):
         if row.get('삭제') == True:
             continue
         r_id = row.get('id')
-        d_val = row['date']
-        d_str = pd.to_datetime(d_val, errors='coerce').strftime("%Y-%m-%d") if pd.notna(d_val) else datetime.today().strftime("%Y-%m-%d")
+        parsed_date = pd.to_datetime(row['date'], errors='coerce')
+        d_str = parsed_date.strftime("%Y-%m-%d") if pd.notna(parsed_date) else datetime.today().strftime("%Y-%m-%d")
         amt = int(pd.to_numeric(row['amount'], errors='coerce') or 0)
         is_f = 1 if row.get('is_fixed') in [True, 1, '1', 'True', 1.0] else 0
 
@@ -235,29 +235,6 @@ def update_template_defaults(t_id, amount, payment):
         df.at[idx, 'default_payment'] = payment
         save_gsheet("fixed_templates", df)
 
-def get_budget(ym):
-    try:
-        df = conn.read(worksheet="budgets", ttl=0)
-        if df.empty: return 0
-        match = df[df['year_month'] == ym]
-        return int(match.iloc[0]['budget_amount']) if not match.empty else 0
-    except:
-        save_gsheet("budgets", pd.DataFrame(columns=['year_month', 'budget_amount']))
-        return 0
-
-def set_budget(ym, amount):
-    try:
-        df = conn.read(worksheet="budgets", ttl=0)
-    except:
-        df = pd.DataFrame(columns=['year_month', 'budget_amount'])
-        
-    if not df.empty and ym in df['year_month'].values:
-        df.loc[df['year_month'] == ym, 'budget_amount'] = int(amount)
-    else:
-        new_row = pd.DataFrame([{'year_month': ym, 'budget_amount': int(amount)}])
-        df = pd.concat([df, new_row], ignore_index=True) if not df.empty else new_row
-    save_gsheet("budgets", df)
-
 # -------------------------------------------------------------
 # 5. 메인 UI & 메뉴
 # -------------------------------------------------------------
@@ -274,7 +251,7 @@ menu = st.sidebar.radio("📌 바로가기 메뉴", [
 ])
 
 # -------------------------------------------------------------
-# 메뉴 1: 지출 내역 입력 (영수증 연속 입력 적용)
+# 메뉴 1: 지출 내역 입력
 # -------------------------------------------------------------
 if menu == "📝 지출 내역 입력":
     st.subheader("📝 새로운 지출 입력")
@@ -295,7 +272,6 @@ if menu == "📝 지출 내역 입력":
             
         col5, col6 = st.columns(2)
         with col5:
-            # 이전 결제수단 기억 적용
             pay_idx = payment_methods.index(st.session_state.last_payment) if st.session_state.last_payment in payment_methods else 0
             payment_options = payment_methods + ["➕ 새 결제수단 직접 입력"]
             payment_method = st.selectbox("결제 수단 / 카드", payment_options, index=pay_idx)
@@ -326,7 +302,6 @@ if menu == "📝 지출 내역 입력":
                 if custom_method:
                     add_setting("payment", custom_method.strip())
                 
-                # ⭐️ 저장 성공 시 날짜와 결제수단을 세션에 기억
                 st.session_state.last_date = rec_date
                 st.session_state.last_payment = final_method
                 
@@ -334,7 +309,7 @@ if menu == "📝 지출 내역 입력":
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 2: 월별 지출 분석 (이번 달 무조건 우선 표시)
+# 메뉴 2: 월별 지출 분석
 # -------------------------------------------------------------
 elif menu == "📊 월별 지출 분석":
     st.subheader("📊 월별 지출 심층 분석")
@@ -347,7 +322,6 @@ elif menu == "📊 월별 지출 분석":
         all_months = [current_ym]
     else:
         df['year_month'] = df['date'].apply(lambda x: str(x)[:7])
-        # ⭐️ 기존 데이터의 달 + 현재 달을 합쳐 무조건 현재 달이 목록에 있게 함
         all_months = sorted(list(set(df['year_month'].tolist() + [current_ym])), reverse=True)
     
     default_idx = all_months.index(current_ym) if current_ym in all_months else 0
@@ -463,6 +437,13 @@ elif menu == "📋 전체 내역 및 바로 수정":
                 sel_m = st.selectbox("조회할 월 선택", months, index=default_idx)
             with s_col2:
                 kw = st.text_input("🔎 검색어 (사용처, 상세항목, 카테고리)", placeholder="예: 스타벅스, 신한카드")
+
+            # ⭐️ 정렬 기능 추가 UI
+            sort_c1, sort_c2 = st.columns(2)
+            with sort_c1:
+                sort_key = st.selectbox("🔽 정렬 기준", ["날짜", "금액", "카테고리", "상세 항목", "결제 수단"])
+            with sort_c2:
+                sort_dir = st.selectbox("↕️ 정렬 방식", ["내림차순 (최신/큰값 우선)", "오름차순 (과거/작은값 우선)"])
                 
             filtered_df = df.copy()
             if sel_m != "전체 월":
@@ -474,16 +455,26 @@ elif menu == "📋 전체 내역 및 바로 수정":
                     filtered_df['category'].str.contains(kw, na=False)
                 ]
                 
-            st.caption(f"💡 **수정:** 표의 칸을 클릭하여 내용을 변경하세요.<br>💡 **삭제:** 지우고 싶은 항목의 **[🗑️ 삭제]** 체크박스를 누른 후 <b>저장</b>을 누르세요.<br>(조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)", unsafe_allow_html=True)
+            st.caption(f"💡 **수정:** 표의 칸을 클릭하여 내용을 변경하세요. 제목을 눌러도 정렬됩니다.<br>💡 **삭제:** 지우고 싶은 항목의 **[🗑️ 삭제]** 체크박스를 누른 후 <b>저장</b>을 누르세요.<br>(조회 항목: 총 {len(filtered_df)}건 / 합계: {filtered_df['amount'].sum():,}원)", unsafe_allow_html=True)
             
             df_edit = filtered_df.drop(columns=['year_month']).copy()
             if 'type' in df_edit.columns:
                 df_edit = df_edit.drop(columns=['type'])
             df_edit.insert(0, '삭제', False)
             
-            df_edit['date'] = pd.to_datetime(df_edit['date'], errors='coerce').dt.date
-            df_edit['is_fixed'] = df_edit['is_fixed'].apply(lambda x: True if x in [1, '1', True] else False)
+            df_edit['id'] = pd.to_numeric(df_edit['id'], errors='coerce')
+            df_edit['date'] = pd.to_datetime(df_edit['date'], errors='coerce')
+            df_edit['category'] = df_edit['category'].fillna("").astype(str)
+            df_edit['sub_category'] = df_edit['sub_category'].fillna("").astype(str)
             df_edit['amount'] = pd.to_numeric(df_edit['amount'], errors='coerce').fillna(0).astype(int)
+            df_edit['payment_method'] = df_edit['payment_method'].fillna("").astype(str)
+            df_edit['is_fixed'] = df_edit['is_fixed'].apply(lambda x: True if str(x).lower() in ['1', '1.0', 'true'] else False).astype(bool)
+            df_edit['memo'] = df_edit['memo'].fillna("").astype(str)
+            
+            # ⭐️ 선택한 기준에 맞춰 데이터 정렬 적용
+            sort_col_map = {"날짜": "date", "금액": "amount", "카테고리": "category", "상세 항목": "sub_category", "결제 수단": "payment_method"}
+            is_asc = True if "오름차순" in sort_dir else False
+            df_edit = df_edit.sort_values(by=[sort_col_map[sort_key], 'id'], ascending=[is_asc, False])
             
             edited_data = st.data_editor(
                 df_edit,
@@ -519,7 +510,6 @@ elif menu == "📋 전체 내역 및 바로 수정":
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='지출_내역')
             
-            # ⭐️ 백업 파일명에 시간과 분까지 기록 (제안 4 적용)
             timestamp_str = datetime.today().strftime('%Y%m%d_%H%M')
             st.download_button(
                 label="📥 가계부 전체 엑셀(XLSX) 다운로드 백업", data=output.getvalue(),
@@ -549,12 +539,11 @@ elif menu == "📋 전체 내역 및 바로 수정":
                 st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록 (이중 등록 경고 추가)
+# 메뉴 5: 정기 고정비 일괄 등록
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 템플릿 관리")
     
-    # ⭐️ 이번 달 고정지출 중복 등록 경고 로직 (제안 2 적용)
     records_df = load_records()
     current_ym = datetime.today().strftime('%Y-%m')
     has_fixed_this_month = False
@@ -571,9 +560,15 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     df_fixed = load_fixed_templates()
     df_edit = df_fixed.copy()
     
-    # 이미 등록된 달이면 기본 체크를 해제하여 실수 방지
     df_edit.insert(0, '이번달 등록', not has_fixed_this_month)
     df_edit.insert(1, '템플릿 삭제', False)
+    
+    df_edit['id'] = pd.to_numeric(df_edit['id'], errors='coerce')
+    df_edit['category'] = df_edit['category'].fillna("").astype(str)
+    df_edit['sub_category'] = df_edit['sub_category'].fillna("").astype(str)
+    df_edit['default_amount'] = pd.to_numeric(df_edit['default_amount'], errors='coerce').fillna(0).astype(int)
+    df_edit['default_payment'] = df_edit['default_payment'].fillna("").astype(str)
+    df_edit['memo'] = df_edit['memo'].fillna("").astype(str)
     
     edited_data = st.data_editor(
         df_edit,
