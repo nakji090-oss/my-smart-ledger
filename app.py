@@ -255,7 +255,7 @@ if menu == "📝 지출 내역 입력":
         with col1:
             rec_date = st.date_input("날짜", st.session_state.last_date)
         with col2:
-            amount = st.number_input("금액 (원)", min_value=0, step=1000, value=0)
+            amount = st.number_input("금액 (원)", min_value=0, step=1000, value=0, format="%d")
             
         col3, col4 = st.columns(2)
         with col3:
@@ -476,7 +476,7 @@ elif menu == "📋 전체 내역 및 바로 수정":
                     "date": st.column_config.DateColumn("날짜", required=True, format="YYYY-MM-DD"),
                     "category": st.column_config.SelectboxColumn("카테고리", options=expense_categories, required=True),
                     "sub_category": st.column_config.TextColumn("상세 항목"),
-                    "amount": st.column_config.NumberColumn("금액 (원)", min_value=0, step=1000, required=True),
+                    "amount": st.column_config.NumberColumn("금액 (원)", min_value=0, step=1000, format="%d", required=True),
                     "payment_method": st.column_config.SelectboxColumn("결제 수단", options=payment_methods, required=True),
                     "is_fixed": st.column_config.CheckboxColumn("고정지출"),
                     "memo": st.column_config.TextColumn("메모 / 사용처"),
@@ -531,7 +531,7 @@ elif menu == "📋 전체 내역 및 바로 수정":
                 st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
 
 # -------------------------------------------------------------
-# 메뉴 5: 정기 고정비 일괄 등록 (최종 확인 단계 추가 & 버그 수정)
+# 메뉴 5: 정기 고정비 일괄 등록
 # -------------------------------------------------------------
 elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.subheader("⚙️ 정기 고정비 일괄 등록 및 템플릿 관리")
@@ -540,7 +540,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     current_ym = datetime.today().strftime('%Y-%m')
     has_fixed_this_month = False
     
-    # ⭐️ 문자와 숫자를 완벽하게 일치시켜서 삭제 후 재등록이 안되던 버그 완벽 해결
     if not records_df.empty:
         records_df['ym'] = pd.to_datetime(records_df['date'], errors='coerce').dt.strftime('%Y-%m')
         records_df['is_fixed_safe'] = pd.to_numeric(records_df['is_fixed'], errors='coerce').fillna(0).astype(int)
@@ -572,7 +571,7 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
             "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
             "category": st.column_config.SelectboxColumn("카테고리", options=expense_categories, required=True),
             "sub_category": st.column_config.TextColumn("상세 항목", required=True),
-            "default_amount": st.column_config.NumberColumn("기본 금액 (원)", min_value=0, step=1000, required=True),
+            "default_amount": st.column_config.NumberColumn("기본 금액 (원)", min_value=0, step=1000, format="%d", required=True),
             "default_payment": st.column_config.SelectboxColumn("기본 결제수단", options=payment_methods, required=True),
             "memo": st.column_config.TextColumn("메모"),
         },
@@ -590,12 +589,10 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     st.write("#### 🚀 이번 달 가계부 일괄 등록 실행")
     target_date = st.date_input("등록 기준 일자", datetime.today())
     
-    # ⭐️ 1단계: 바로 등록하지 않고 확인(미리보기) 단계로 넘어갑니다.
     if st.button("🔍 체크된 항목 확인 및 일괄 등록 준비", use_container_width=True):
-        save_edited_fixed_templates(df_fixed, edited_data) # 표 수정사항 우선 저장
+        save_edited_fixed_templates(df_fixed, edited_data)
         st.session_state.confirm_batch = True
         
-    # ⭐️ 2단계: 최종 확인 창 (confirm_batch가 True일 때만 보임)
     if st.session_state.get('confirm_batch', False):
         st.markdown("### 📋 일괄 등록 전 최종 확인")
         to_register = edited_data[(edited_data['이번달 등록'] == True) & (edited_data['템플릿 삭제'] == False)]
@@ -604,7 +601,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
             st.warning("☑️ '이번달 등록' 칸에 체크된 항목이 없습니다. 표에서 등록할 항목을 체크한 후 다시 버튼을 눌러주세요.")
             st.session_state.confirm_batch = False
         else:
-            # 등록될 항목만 뽑아서 깔끔하게 보여주기
             st.dataframe(
                 to_register[['category', 'sub_category', 'default_amount', 'default_payment', 'memo']],
                 hide_index=True, use_container_width=True
@@ -638,7 +634,6 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                                 'memo': str(row.get('memo', ''))
                             })
                             
-                            # 기본값도 업데이트
                             t_id = row.get('id')
                             if pd.notna(t_id) and t_id in df_templates['id'].values:
                                 idx = df_templates.index[df_templates['id'] == t_id][0]
@@ -647,13 +642,12 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
                                 
                             count += 1
                     
-                    # 시트에 한 번에 밀어넣기
                     if new_record_rows:
                         df_records = pd.concat([df_records, pd.DataFrame(new_record_rows)], ignore_index=True) if not df_records.empty else pd.DataFrame(new_record_rows)
                         save_gsheet("records", df_records)
                         save_gsheet("fixed_templates", df_templates)
                         
-                    st.session_state.confirm_batch = False # 등록 완료 후 확인 창 숨기기
+                    st.session_state.confirm_batch = False
                     st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 일괄 등록되었습니다!")
                     st.rerun()
 
