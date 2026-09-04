@@ -63,7 +63,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------
-# 4. 구글 시트 DB 헬퍼 함수 (에러 방어 로직 강력 강화 ⭐)
+# 4. 구글 시트 DB 헬퍼 함수
 # -------------------------------------------------------------
 def load_gsheet(worksheet_name, default_cols):
     try:
@@ -72,7 +72,6 @@ def load_gsheet(worksheet_name, default_cols):
             return pd.DataFrame(columns=default_cols)
         return df.dropna(how='all')
     except Exception as e:
-        # 일시적 통신 오류 시 빈 데이터로 덮어쓰는 것을 막기 위해 강제 중단
         st.error("🚨 구글 서버와의 통신이 일시적으로 지연되었습니다. 데이터 덮어쓰기 방지를 위해 앱을 일시 정지합니다. 화면을 새로고침 해주세요.")
         st.stop()
 
@@ -588,20 +587,53 @@ elif menu == "⚙️ 정기 고정비 일괄 등록":
     target_date = st.date_input("등록 기준 일자", datetime.today())
     
     if st.button("🚀 위 표에서 체크된 항목을 가계부에 일괄 등록", use_container_width=True, type="primary"):
+        # 1. 템플릿 수정사항 먼저 저장
         save_edited_fixed_templates(df_fixed, edited_data)
 
         to_register = edited_data[(edited_data['이번달 등록'] == True) & (edited_data['템플릿 삭제'] == False)]
         if to_register.empty:
             st.warning("등록할 항목이 선택되지 않았습니다.")
         else:
+            # ⭐️ [핵심 수정] 루프 안에서 통신하지 않고, 한 번에 데이터를 묶어서 저장합니다.
+            df_records = load_records()
+            df_templates = load_fixed_templates()
+            
+            new_record_rows = []
             count = 0
+            
             for _, row in to_register.iterrows():
                 amt = int(pd.to_numeric(row['default_amount'], errors='coerce') or 0)
                 if amt > 0:
-                    add_record(target_date, row['category'], row['sub_category'], amt, row['default_payment'], True, str(row.get('memo', '')))
-                    update_template_defaults(row.get('id'), amt, row['default_payment'])
+                    new_id = int(df_records['id'].max() + 1) if not df_records.empty and pd.notna(df_records['id'].max()) else 1
+                    new_id += len(new_record_rows)
+                    
+                    new_record_rows.append({
+                        'id': new_id, 
+                        'date': target_date.strftime("%Y-%m-%d"), 
+                        'category': str(row['category']), 
+                        'sub_category': str(row['sub_category']), 
+                        'amount': amt, 
+                        'payment_method': str(row['default_payment']), 
+                        'is_fixed': 1, 
+                        'memo': str(row.get('memo', ''))
+                    })
+                    
+                    t_id = row.get('id')
+                    if pd.notna(t_id) and t_id in df_templates['id'].values:
+                        idx = df_templates.index[df_templates['id'] == t_id][0]
+                        df_templates.at[idx, 'default_amount'] = amt
+                        df_templates.at[idx, 'default_payment'] = str(row['default_payment'])
+                        
                     count += 1
-            st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 등록되었습니다!")
+            
+            # 묶어둔 데이터를 딱 1번만 구글 시트에 밀어넣기
+            if new_record_rows:
+                df_records = pd.concat([df_records, pd.DataFrame(new_record_rows)], ignore_index=True) if not df_records.empty else pd.DataFrame(new_record_rows)
+                save_gsheet("records", df_records)
+                save_gsheet("fixed_templates", df_templates)
+                
+            st.success(f"🎉 총 {count}건의 고정 지출이 구글 시트에 안전하게 일괄 등록되었습니다!")
+            st.rerun()
 
 # -------------------------------------------------------------
 # 메뉴 6: 분류 관리
