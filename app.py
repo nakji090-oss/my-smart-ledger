@@ -99,7 +99,6 @@ def add_setting(stype, name):
 def load_records():
     df = load_gsheet("records", ['id', 'date', 'category', 'sub_category', 'amount', 'payment_method', 'is_fixed', 'memo'])
     if not df.empty:
-        # ⭐️ 데이터를 불러올 때 'amount' 열을 무조건 정수(int)로 강제 변환하여 소수점 발생 원천 차단
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0).astype(int)
     return df
 
@@ -184,7 +183,6 @@ def import_records_from_df(import_df):
 def load_fixed_templates():
     df = load_gsheet("fixed_templates", ['id', 'category', 'sub_category', 'default_amount', 'default_payment', 'memo'])
     if not df.empty:
-        # ⭐️ 템플릿 금액도 소수점 원천 차단
         df['default_amount'] = pd.to_numeric(df['default_amount'], errors='coerce').fillna(0).astype(int)
     return df
 
@@ -246,7 +244,7 @@ st.title("💰 스마트 가계부")
 menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "📝 지출 내역 입력", 
     "📊 월별 지출 분석", 
-    "📈 월별 지출 비교 (MoM)", 
+    "📈 월별 지출 비교",  # 'MoM' 삭제됨
     "📋 전체 내역 및 바로 수정", 
     "⚙️ 정기 고정비 일괄 등록",
     "🏷️ 분류 및 결제수단 관리"
@@ -372,9 +370,9 @@ elif menu == "📊 월별 지출 분석":
         st.info("해당 월의 지출 데이터가 없습니다.")
 
 # -------------------------------------------------------------
-# 메뉴 3: 월별 지출 비교 (MoM)
+# 메뉴 3: 월별 지출 비교
 # -------------------------------------------------------------
-elif menu == "📈 월별 지출 비교 (MoM)":
+elif menu == "📈 월별 지출 비교":
     st.subheader("📈 월별 지출 추이 및 전월 대비 비교")
     df = load_records()
     
@@ -400,7 +398,7 @@ elif menu == "📈 월별 지출 비교 (MoM)":
             y=['고정지출', '변동지출'], 
             title="월별 지출 구조 추이",
             barmode='stack',
-            text_auto=True
+            text_auto=',.0f' # ⭐️ 'k' 대신 원 단위 정수로 표시 (예: 15,000)
         )
         fig_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2), xaxis_title="")
         st.plotly_chart(fig_trend, use_container_width=True)
@@ -410,7 +408,8 @@ elif menu == "📈 월별 지출 비교 (MoM)":
         cat_monthly = df.groupby(['year_month', 'category'])['amount'].sum().reset_index()
         fig_cat_trend = px.bar(
             cat_monthly, x='year_month', y='amount', color='category',
-            title="카테고리별 월별 비교", barmode='group', text_auto=True
+            title="카테고리별 월별 비교", barmode='group', 
+            text_auto=',.0f' # ⭐️ 'k' 대신 원 단위 정수로 표시
         )
         fig_cat_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3), xaxis_title="")
         st.plotly_chart(fig_cat_trend, use_container_width=True)
