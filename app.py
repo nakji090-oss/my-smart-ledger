@@ -244,7 +244,7 @@ st.title("💰 스마트 가계부")
 menu = st.sidebar.radio("📌 바로가기 메뉴", [
     "📝 지출 내역 입력", 
     "📊 월별 지출 분석", 
-    "📈 월별 지출 비교",  # 'MoM' 삭제됨
+    "📈 월별 지출 비교", 
     "📋 전체 내역 및 바로 수정", 
     "⚙️ 정기 고정비 일괄 등록",
     "🏷️ 분류 및 결제수단 관리"
@@ -309,7 +309,7 @@ if menu == "📝 지출 내역 입력":
                 st.rerun()
 
 # -------------------------------------------------------------
-# 메뉴 2: 월별 지출 분석
+# 메뉴 2: 월별 지출 분석 (변동지출 비중 차트 추가)
 # -------------------------------------------------------------
 elif menu == "📊 월별 지출 분석":
     st.subheader("📊 월별 지출 심층 분석")
@@ -351,13 +351,6 @@ elif menu == "📊 월별 지출 분석":
                 """, unsafe_allow_html=True)
                 
         st.write("---")
-        st.write("#### 🏷️ 카테고리별 지출 비중")
-        cat_sum = expense_df.groupby('category')['amount'].sum().reset_index()
-        fig_cat = px.pie(cat_sum, values='amount', names='category', hole=0.35)
-        fig_cat.update_layout(margin=dict(t=20, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3))
-        st.plotly_chart(fig_cat, use_container_width=True)
-
-        st.write("---")
         st.write("#### ⚖️ 고정지출 vs 변동지출")
         fc1, fc2 = st.columns(2)
         fc1.metric("📌 고정지출", f"{fixed_expense:,} 원")
@@ -366,11 +359,31 @@ elif menu == "📊 월별 지출 분석":
         fig = px.pie(values=[fixed_expense, var_expense], names=["고정지출", "변동지출"], hole=0.45)
         fig.update_layout(margin=dict(t=30, b=10, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2))
         st.plotly_chart(fig, use_container_width=True)
+
+        st.write("---")
+        st.write("#### 🏷️ 전체 카테고리별 지출 비중")
+        cat_sum = expense_df.groupby('category')['amount'].sum().reset_index()
+        fig_cat = px.pie(cat_sum, values='amount', names='category', hole=0.35)
+        fig_cat.update_layout(margin=dict(t=20, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3))
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+        # ⭐️ 변동지출(고정비 제외) 비중 파이 차트 추가
+        st.write("---")
+        st.write("#### 🛒 변동지출 카테고리별 비중 (고정비 제외)")
+        var_expense_df = expense_df[expense_df['is_fixed'] == 0]
+        if not var_expense_df.empty and var_expense > 0:
+            var_cat_sum = var_expense_df.groupby('category')['amount'].sum().reset_index()
+            fig_var_cat = px.pie(var_cat_sum, values='amount', names='category', hole=0.35)
+            fig_var_cat.update_layout(margin=dict(t=20, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3))
+            st.plotly_chart(fig_var_cat, use_container_width=True)
+        else:
+            st.info("이번 달 변동지출 내역이 없습니다.")
+
     else:
         st.info("해당 월의 지출 데이터가 없습니다.")
 
 # -------------------------------------------------------------
-# 메뉴 3: 월별 지출 비교
+# 메뉴 3: 월별 지출 비교 (날짜 포맷 고정 및 변동지출 그래프 추가)
 # -------------------------------------------------------------
 elif menu == "📈 월별 지출 비교":
     st.subheader("📈 월별 지출 추이 및 전월 대비 비교")
@@ -398,21 +411,40 @@ elif menu == "📈 월별 지출 비교":
             y=['고정지출', '변동지출'], 
             title="월별 지출 구조 추이",
             barmode='stack',
-            text_auto=',.0f' # ⭐️ 'k' 대신 원 단위 정수로 표시 (예: 15,000)
+            text_auto=',.0f'
         )
         fig_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.2), xaxis_title="")
+        fig_trend.update_xaxes(type='category') # ⭐️ 영문 월별 표기를 막고 '2026-09' 숫자 형태로 강제 고정
         st.plotly_chart(fig_trend, use_container_width=True)
         
         st.write("---")
-        st.write("#### 🏷️ 카테고리별 월간 지출 변화")
+        st.write("#### 🏷️ 전체 카테고리별 월간 지출 변화")
         cat_monthly = df.groupby(['year_month', 'category'])['amount'].sum().reset_index()
         fig_cat_trend = px.bar(
             cat_monthly, x='year_month', y='amount', color='category',
             title="카테고리별 월별 비교", barmode='group', 
-            text_auto=',.0f' # ⭐️ 'k' 대신 원 단위 정수로 표시
+            text_auto=',.0f'
         )
         fig_cat_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3), xaxis_title="")
+        fig_cat_trend.update_xaxes(type='category') # ⭐️ 영문 월별 표기 방지
         st.plotly_chart(fig_cat_trend, use_container_width=True)
+
+        # ⭐️ 변동지출(고정비 제외) 카테고리별 비교 막대그래프 추가
+        st.write("---")
+        st.write("#### 🛒 변동지출 카테고리별 월간 변화 (고정비 제외)")
+        var_df = df[df['is_fixed'] == 0]
+        if not var_df.empty:
+            var_cat_monthly = var_df.groupby(['year_month', 'category'])['amount'].sum().reset_index()
+            fig_var_cat_trend = px.bar(
+                var_cat_monthly, x='year_month', y='amount', color='category',
+                title="변동지출 카테고리별 월별 비교", barmode='group', 
+                text_auto=',.0f'
+            )
+            fig_var_cat_trend.update_layout(margin=dict(t=30, b=20, l=10, r=10), legend=dict(orientation="h", yanchor="bottom", y=-0.3), xaxis_title="")
+            fig_var_cat_trend.update_xaxes(type='category') # ⭐️ 영문 월별 표기 방지
+            st.plotly_chart(fig_var_cat_trend, use_container_width=True)
+        else:
+            st.info("변동지출 내역이 없어 비교할 수 없습니다.")
 
 # -------------------------------------------------------------
 # 메뉴 4: 전체 내역 및 바로 수정
