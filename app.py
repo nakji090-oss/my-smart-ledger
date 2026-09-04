@@ -97,7 +97,11 @@ def add_setting(stype, name):
         save_gsheet("settings", df)
 
 def load_records():
-    return load_gsheet("records", ['id', 'date', 'category', 'sub_category', 'amount', 'payment_method', 'is_fixed', 'memo'])
+    df = load_gsheet("records", ['id', 'date', 'category', 'sub_category', 'amount', 'payment_method', 'is_fixed', 'memo'])
+    if not df.empty:
+        # ⭐️ 데이터를 불러올 때 'amount' 열을 무조건 정수(int)로 강제 변환하여 소수점 발생 원천 차단
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce').fillna(0).astype(int)
+    return df
 
 def add_record(date_str, cat, sub_cat, amount, method, is_fixed, memo):
     df = load_records()
@@ -178,7 +182,11 @@ def import_records_from_df(import_df):
     return True, f"총 {len(new_rows)}건의 내역 복원 완료"
 
 def load_fixed_templates():
-    return load_gsheet("fixed_templates", ['id', 'category', 'sub_category', 'default_amount', 'default_payment', 'memo'])
+    df = load_gsheet("fixed_templates", ['id', 'category', 'sub_category', 'default_amount', 'default_payment', 'memo'])
+    if not df.empty:
+        # ⭐️ 템플릿 금액도 소수점 원천 차단
+        df['default_amount'] = pd.to_numeric(df['default_amount'], errors='coerce').fillna(0).astype(int)
+    return df
 
 def save_edited_fixed_templates(orig_df, edited_df):
     df = load_fixed_templates()
