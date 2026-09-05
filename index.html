@@ -163,7 +163,7 @@
             <hr class="my-4 border-secondary">
             
             <h5 class="fw-bold mb-3 text-body">📈 최근 6개월 변동지출 추이</h5>
-            <div id="barChart" style="height: 350px;"></div>
+            <div id="barChart" style="height: 370px;"></div>
         </div>
     </div>
 
@@ -318,7 +318,6 @@
         <div class="card p-4">
             <h5 class="fw-bold mb-4 text-body">⚙️ 설정 및 데이터 관리</h5>
             
-            <!-- 🔗 구글 시트 원본 바로가기 버튼 -->
             <h6 class="fw-bold text-body">🔗 데이터 원본(금고) 확인</h6>
             <a :href="googleSheetUrl" target="_blank" class="btn btn-outline-success w-100 fw-bold py-2 mb-4">
                 📊 구글 스프레드시트 바로가기
@@ -349,8 +348,6 @@
 
 <script>
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwZY8pgr3jts0HV3U4X-9usjvECcqkOOK4048Kcth5pErk_cpc1STaP8fumaxyP4Jdx/exec";
-
-// 🔗 구글 시트 바로가기 주소 반영 완료
 const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1UHo6FAzUb2-aYMRXoOdw82DDjMEcEidg1qyHW8NuLR4/edit?usp=drivesdk";
 
 const app = Vue.createApp({
@@ -719,21 +716,24 @@ const app = Vue.createApp({
             });
 
             let totalSums = months.map(m => trendData[m] ? Object.values(trendData[m]).reduce((a,b)=>a+b, 0) : 0);
+            
+            // 📈 상단 총금액 글자를 훨씬 굵고 선명하게(bold), 여유 있게 배치
             traces.push({
                 x: months, y: totalSums, type: 'scatter', mode: 'text',
                 text: totalSums.map(v => v > 0 ? v.toLocaleString() + '원' : ''),
                 textposition: 'top center', showlegend: false, hoverinfo: 'skip',
-                textfont: { color: this.isDark ? '#e2e8f0' : '#312e81', weight: 'bold', size: 13 }
+                textfont: { color: this.isDark ? '#ffffff' : '#1e1b4b', family: 'Pretendard, sans-serif', size: 14 },
+                cliponaxis: false // 글자가 잘리지 않도록 강제 허용
             });
 
             let barLayout = { 
                 barmode: 'stack', 
-                margin: {t:30, b:30, l:40, r:10}, 
+                margin: {t: 50, b: 30, l: 40, r: 10}, // 📈 위쪽 여백을 50으로 넉넉하게 확장
                 legend: {orientation: 'h', y: -0.2, font: { color: fontColor }},
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
                 xaxis: { type: 'category', tickfont: { color: fontColor }, showgrid: false },
-                yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0' }
+                yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0', range: [0, Math.max(...totalSums, 100000) * 1.15] } // 📈 최고점 위로 15% 여유 공간 추가
             };
             Plotly.newPlot('barChart', traces, barLayout, {displayModeBar: false});
         }
@@ -745,7 +745,6 @@ const app = Vue.createApp({
 app.mount('#app');
 </script>
 
-<!-- 🚨 꼬리표 떼기(앱 설치)를 위한 서비스 워커 등록 -->
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
