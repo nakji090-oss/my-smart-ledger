@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>스마트 가계부</title>
+    <!-- 디자인(Bootstrap) 및 기능(Vue3, Plotly) 라이브러리 로드 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body { background-color: #f0f2f5; font-family: 'Pretendard', sans-serif; padding-bottom: 80px; padding-top: 20px;}
+        .card { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); }
+        .nav-item { flex: 1; text-align: center; padding: 15px 0; font-size: 13px; font-weight: 600; color: #a0aec0; cursor: pointer; transition: 0.2s; }
+        .nav-item.active { color: #4f46e5; border-top: 3px solid #4f46e5; background: #f8faff; }
+        .form-control, .form-select { border-radius: 10px; padding: 12px; font-size: 15px; }
+        .btn-primary { background-color: #4f46e5; border: none; border-radius: 12px; padding: 12px; font-weight: bold; }
+        .loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .metric-box { background: #eef2ff; border-left: 4px solid #4f46e5; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+<div id="app" class="container-fluid" style="max-width: 800px;">
+    
+    <!-- 로딩 화면 -->
+    <div v-if="isLoading" class="loading-screen">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+        <h5 class="mt-3 fw-bold text-primary">데이터를 동기화 중입니다...</h5>
+        <p class="text-muted">구글 시트와 안전하게 연결하고 있습니다.</p>
+    </div>
+
+    <h3 class="fw-bold mb-4 px-2">💰 스마트 가계부</h3>
+
+    <!-- 1. 입력 탭 -->
+    <div v-show="currentTab === 'input'">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-4">📝 새로운 지출 입력</h5>
+            <form @submit.prevent="submitRecord">
+                <div class="mb-3">
+                    <label class="form-label text-muted small fw-bold">날짜</label>
+                    <input type="date" v-model="form.date" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted small fw-bold">금액 (원)</label>
+                    <input type="number" v-model="form.amount" class="form-control" placeholder="0" required>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <label class="form-label text-muted small fw-bold">카테고리</label>
+                        <select v-model="form.category" class="form-select" required>
+                            <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label text-muted small fw-bold">상세 항목</label>
+                        <input type="text" v-model="form.sub_category" class="form-control" placeholder="예: 점심, 주유">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted small fw-bold">결제 수단</label>
+                    <select v-model="form.payment_method" class="form-select" required>
+                        <option v-for="pay in paymentMethods" :value="pay">{{ pay }}</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted small fw-bold">메모 / 사용처</label>
+                    <input type="text" v-model="form.memo" class="form-control" placeholder="예: 스타벅스">
+                </div>
+                <div class="form-check mb-4 mt-2">
+                    <input class="form-check-input" type="checkbox" v-model="form.is_fixed" id="isFixed">
+                    <label class="form-check-label fw-bold text-danger" for="isFixed">📌 매달 나가는 고정 지출</label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100 fs-5">💾 지출 내역 저장하기</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. 통계 탭 -->
+    <div v-show="currentTab === 'stats'">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-3">📊 월별 지출 분석</h5>
+            <select v-model="selectedMonth" @change="drawCharts" class="form-select mb-4">
+                <option v-for="m in availableMonths" :value="m">{{ m }}</option>
+            </select>
+            
+            <div class="metric-box">
+                <div class="text-muted small fw-bold">이번 달 총 지출</div>
+                <div class="fs-2 fw-bold" style="color: #312e81;">{{ formatNumber(monthlyTotal) }} 원</div>
+            </div>
+            
+            <div class="row text-center mb-4">
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <div class="small fw-bold text-muted">📌 고정지출</div>
+                        <div class="fs-5 fw-bold text-danger">{{ formatNumber(monthlyFixed) }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3">
+                        <div class="small fw-bold text-muted">🛒 변동지출</div>
+                        <div class="fs-5 fw-bold text-primary">{{ formatNumber(monthlyVar) }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <h6 class="fw-bold mt-4">🛒 변동지출 카테고리 비중</h6>
+            <div id="pieChart" style="height: 300px;"></div>
+            
+            <hr class="my-4">
+            
+            <h5 class="fw-bold mb-3">📈 월별 변동지출 추이 (MoM)</h5>
+            <div id="barChart" style="height: 350px;"></div>
+        </div>
+    </div>
+
+    <!-- 3. 내역 탭 -->
+    <div v-show="currentTab === 'history'">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3">📋 전체 내역 관리</h5>
+            <div class="mb-3 d-flex gap-2">
+                <select v-model="historySort" class="form-select w-50">
+                    <option value="date_desc">📅 최신 날짜순</option>
+                    <option value="date_asc">📅 과거 날짜순</option>
+                    <option value="amt_desc">💰 금액 큰 순</option>
+                </select>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" style="font-size: 14px;">
+                    <thead class="table-light">
+                        <tr>
+                            <th>날짜</th>
+                            <th>카테고리</th>
+                            <th class="text-end">금액</th>
+                            <th class="text-center">삭제</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="r in sortedRecords" :key="r.id">
+                            <td>{{ r.date.substring(5) }}</td>
+                            <td>{{ r.category }}<br><small class="text-muted">{{ r.sub_category || r.memo }}</small></td>
+                            <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
+                            <td class="text-center">
+                                <button @click="deleteRecord(r.id)" class="btn btn-sm btn-outline-danger px-2 py-0">🗑️</button>
+                            </td>
+                        </tr>
+                        <tr v-if="sortedRecords.length === 0">
+                            <td colspan="4" class="text-center text-muted py-4">내역이 없습니다.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 관리 탭 -->
+    <div v-show="currentTab === 'settings'">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-4">⚙️ 카테고리 / 결제수단 관리</h5>
+            <div class="alert alert-info small">💡 수정 후 아래 저장 버튼을 눌러야 반영됩니다. 각 줄에 하나씩 입력하세요.</div>
+            
+            <label class="form-label fw-bold mt-2">지출 카테고리</label>
+            <textarea v-model="settingsExpText" class="form-control mb-3" rows="6"></textarea>
+            
+            <label class="form-label fw-bold">결제 수단</label>
+            <textarea v-model="settingsPayText" class="form-control mb-4" rows="5"></textarea>
+            
+            <button @click="saveSettings" class="btn btn-dark w-100 fs-5">💾 설정 영구 저장</button>
+        </div>
+    </div>
+
+    <!-- 하단 네비게이션 바 (모바일 앱 스타일) -->
+    <div class="bottom-nav">
+        <div class="nav-item" :class="{active: currentTab === 'input'}" @click="changeTab('input')">📝 입력</div>
+        <div class="nav-item" :class="{active: currentTab === 'stats'}" @click="changeTab('stats')">📊 분석</div>
+        <div class="nav-item" :class="{active: currentTab === 'history'}" @click="changeTab('history')">📋 내역</div>
+        <div class="nav-item" :class="{active: currentTab === 'settings'}" @click="changeTab('settings')">⚙️ 관리</div>
+    </div>
+
+</div>
+
+<script>
+// =========================================================================
+// 🚨 [필수] 여기에 아까 복사하신 구글 앱스 스크립트 '웹 앱 URL'을 붙여넣으세요!
+// =========================================================================
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzfvcO8Kbd35Pe1NO_dNZwTyMf-RBhb3Ead7d3G4Q60R2hqSrkXvrg72bhT1j-PNG2e/exec";
+
+const app = Vue.createApp({
+    data() {
+        return {
+            isLoading: true,
+            currentTab: 'input',
+            records: [],
+            settings: [],
+            
+            form: {
+                date: new Date().toISOString().split('T')[0],
+                amount: '', category: '', sub_category: '', payment_method: '', is_fixed: false, memo: ''
+            },
+            
+            selectedMonth: new Date().toISOString().slice(0,7),
+            historySort: 'date_desc',
+            
+            settingsExpText: '',
+            settingsPayText: ''
+        }
+    },
+    computed: {
+        expenseCategories() {
+            return this.settings.filter(s => s.setting_type === 'expense').map(s => s.name);
+        },
+        paymentMethods() {
+            return this.settings.filter(s => s.setting_type === 'payment').map(s => s.name);
+        },
+        availableMonths() {
+            const months = new Set(this.records.map(r => String(r.date).substring(0,7)));
+            months.add(new Date().toISOString().slice(0,7));
+            return Array.from(months).sort().reverse();
+        },
+        currentMonthRecords() {
+            return this.records.filter(r => String(r.date).startsWith(this.selectedMonth));
+        },
+        monthlyTotal() { return this.currentMonthRecords.reduce((sum, r) => sum + Number(r.amount), 0); },
+        monthlyFixed() { return this.currentMonthRecords.filter(r => r.is_fixed == 1 || r.is_fixed === 'TRUE').reduce((sum, r) => sum + Number(r.amount), 0); },
+        monthlyVar() { return this.monthlyTotal - this.monthlyFixed; },
+        
+        sortedRecords() {
+            let sorted = [...this.records];
+            if(this.historySort === 'date_desc') sorted.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+            if(this.historySort === 'date_asc') sorted.sort((a,b) => a.date.localeCompare(b.date) || a.id - b.id);
+            if(this.historySort === 'amt_desc') sorted.sort((a,b) => Number(b.amount) - Number(a.amount));
+            return sorted;
+        }
+    },
+    methods: {
+        formatNumber(num) {
+            return Number(num).toLocaleString('ko-KR');
+        },
+        changeTab(tab) {
+            this.currentTab = tab;
+            window.scrollTo(0, 0);
+            if(tab === 'stats') {
+                setTimeout(() => this.drawCharts(), 100);
+            }
+        },
+        parseSheetData(data) {
+            if(!data || data.length < 2) return [];
+            const headers = data[0];
+            return data.slice(1).map(row => {
+                let obj = {};
+                headers.forEach((h, i) => obj[h] = row[i]);
+                return obj;
+            });
+        },
+        async fetchData() {
+            this.isLoading = true;
+            try {
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'text/plain'},
+                    body: JSON.stringify({action: 'get_all'})
+                });
+                const res = await response.json();
+                if(res.success) {
+                    this.records = this.parseSheetData(res.records);
+                    this.settings = this.parseSheetData(res.settings);
+                    
+                    if(this.expenseCategories.length > 0) this.form.category = this.expenseCategories[0];
+                    if(this.paymentMethods.length > 0) this.form.payment_method = this.paymentMethods[0];
+                    
+                    this.settingsExpText = this.expenseCategories.join('\n');
+                    this.settingsPayText = this.paymentMethods.join('\n');
+                }
+            } catch(e) {
+                alert('데이터를 불러오지 못했습니다. URL을 다시 확인해주세요.');
+            }
+            this.isLoading = false;
+        },
+        async submitRecord() {
+            if(!this.form.amount || this.form.amount <= 0) return alert('금액을 입력하세요.');
+            this.isLoading = true;
+            const payload = {
+                action: 'add_record',
+                date: this.form.date,
+                category: this.form.category,
+                sub_category: this.form.sub_category,
+                amount: this.form.amount,
+                payment_method: this.form.payment_method,
+                is_fixed: this.form.is_fixed ? 1 : 0,
+                memo: this.form.memo
+            };
+            try {
+                await fetch(WEB_APP_URL, { method: 'POST', headers: {'Content-Type': 'text/plain'}, body: JSON.stringify(payload) });
+                alert('저장되었습니다!');
+                this.form.amount = ''; this.form.sub_category = ''; this.form.memo = '';
+                await this.fetchData();
+            } catch(e) { alert('오류가 발생했습니다.'); }
+            this.isLoading = false;
+        },
+        async deleteRecord(id) {
+            if(!confirm('정말 삭제하시겠습니까?')) return;
+            this.isLoading = true;
+            const updatedRecords = this.records.filter(r => String(r.id) !== String(id));
+            const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
+            const dataToSave = [headers, ...updatedRecords.map(r => [r.id, r.date, r.category, r.sub_category, r.amount, r.payment_method, r.is_fixed, r.memo])];
+            
+            await fetch(WEB_APP_URL, {
+                method: 'POST', headers: {'Content-Type': 'text/plain'},
+                body: JSON.stringify({action: 'overwrite_sheet', sheet_name: 'records', data: dataToSave})
+            });
+            await this.fetchData();
+        },
+        async saveSettings() {
+            this.isLoading = true;
+            const exp = this.settingsExpText.split('\n').map(s=>s.trim()).filter(s=>s);
+            const pay = this.settingsPayText.split('\n').map(s=>s.trim()).filter(s=>s);
+            
+            const headers = ["setting_type", "name"];
+            let dataToSave = [headers];
+            exp.forEach(e => dataToSave.push(['expense', e]));
+            pay.forEach(p => dataToSave.push(['payment', p]));
+            
+            await fetch(WEB_APP_URL, {
+                method: 'POST', headers: {'Content-Type': 'text/plain'},
+                body: JSON.stringify({action: 'overwrite_sheet', sheet_name: 'settings', data: dataToSave})
+            });
+            alert('설정이 저장되었습니다.');
+            await this.fetchData();
+        },
+        drawCharts() {
+            // 1. 파이 차트 (변동지출 비중)
+            let varRecords = this.currentMonthRecords.filter(r => r.is_fixed == 0 || r.is_fixed === 'FALSE');
+            let catSums = {};
+            varRecords.forEach(r => { catSums[r.category] = (catSums[r.category]||0) + Number(r.amount); });
+            
+            let pieData = [{
+                values: Object.values(catSums),
+                labels: Object.keys(catSums),
+                type: 'pie', hole: 0.4,
+                textinfo: 'label+percent',
+                marker: { colors: ['#4f46e5', '#6366f1', '#818cf8', '#c7d2fe', '#e0e7ff', '#312e81', '#4338ca'] }
+            }];
+            let pieLayout = { margin: {t:10, b:10, l:10, r:10}, showlegend: false };
+            Plotly.newPlot('pieChart', pieData, pieLayout, {displayModeBar: false});
+
+            // 2. 바 차트 (최근 6개월 변동지출 추이)
+            let months = [...this.availableMonths].reverse().slice(-6); // 최신 6개월
+            let trendData = {};
+            
+            this.records.forEach(r => {
+                let ym = String(r.date).substring(0,7);
+                let isVar = (r.is_fixed == 0 || r.is_fixed === 'FALSE');
+                if(months.includes(ym) && isVar) {
+                    if(!trendData[ym]) trendData[ym] = {};
+                    trendData[ym][r.category] = (trendData[ym][r.category]||0) + Number(r.amount);
+                }
+            });
+
+            let traces = [];
+            this.expenseCategories.forEach(cat => {
+                let yValues = months.map(m => trendData[m] ? (trendData[m][cat]||0) : 0);
+                if(yValues.some(v => v > 0)) {
+                    traces.push({ x: months, y: yValues, name: cat, type: 'bar', text: yValues, textposition: 'inside', texttemplate: '%{y:,}' });
+                }
+            });
+            let barLayout = { barmode: 'stack', margin: {t:20, b:30, l:40, r:10}, legend: {orientation: 'h', y: -0.2} };
+            Plotly.newPlot('barChart', traces, barLayout, {displayModeBar: false});
+        }
+    },
+    mounted() {
+        this.fetchData();
+    }
+});
+app.mount('#app');
+</script>
+</body>
+</html>
