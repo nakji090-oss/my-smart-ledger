@@ -130,12 +130,31 @@
     <div v-show="currentTab === 'history'">
         <div class="card p-3">
             <h5 class="fw-bold mb-3">📋 전체 내역 관리</h5>
-            <div class="mb-3 d-flex gap-2">
-                <select v-model="historySort" class="form-select w-50">
-                    <option value="date_desc">📅 최신 날짜순</option>
-                    <option value="date_asc">📅 과거 날짜순</option>
-                    <option value="amt_desc">💰 금액 큰 순</option>
-                </select>
+            
+            <!-- 필터, 검색, 정렬 도구 추가 -->
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <select v-model="historyFilterCat" class="form-select bg-light text-secondary fw-bold" style="font-size: 13px;">
+                        <option value="">📂 전체 항목 보기</option>
+                        <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
+                    </select>
+                </div>
+                <div class="col-6">
+                    <select v-model="historySort" class="form-select bg-light text-secondary fw-bold" style="font-size: 13px;">
+                        <option value="date_desc">📅 최신 날짜순</option>
+                        <option value="date_asc">📅 과거 날짜순</option>
+                        <option value="amt_desc">💰 금액 큰 순</option>
+                        <option value="cat_asc">🏷️ 항목(가나다)순</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <input type="text" v-model="historySearchKw" class="form-control bg-light" placeholder="🔎 검색 (상세 항목이나 사용처 입력)" style="font-size: 13px;">
+                </div>
+            </div>
+
+            <!-- 현재 조회된 리스트의 갯수와 총액 요약 -->
+            <div class="text-end mb-2 small fw-bold" style="color: #4f46e5;">
+                조회결과: 총 {{ sortedRecords.length }}건 ({{ formatNumber(filteredTotal) }}원)
             </div>
             
             <div class="table-responsive">
@@ -182,7 +201,7 @@
                             </template>
                         </tr>
                         <tr v-if="sortedRecords.length === 0">
-                            <td colspan="4" class="text-center text-muted py-4">내역이 없습니다.</td>
+                            <td colspan="4" class="text-center text-muted py-4">조건에 맞는 내역이 없습니다.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -298,6 +317,8 @@ const app = Vue.createApp({
             
             selectedMonth: new Date().toISOString().slice(0,7),
             historySort: 'date_desc',
+            historyFilterCat: '',
+            historySearchKw: '',
             
             settingsExpText: '',
             settingsPayText: ''
@@ -332,11 +353,33 @@ const app = Vue.createApp({
         },
         
         sortedRecords() {
-            let sorted = [...this.records];
-            if(this.historySort === 'date_desc') sorted.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
-            if(this.historySort === 'date_asc') sorted.sort((a,b) => a.date.localeCompare(b.date) || a.id - b.id);
-            if(this.historySort === 'amt_desc') sorted.sort((a,b) => Number(b.amount) - Number(a.amount));
-            return sorted;
+            let filtered = [...this.records];
+            
+            // 1. 카테고리 필터
+            if (this.historyFilterCat) {
+                filtered = filtered.filter(r => r.category === this.historyFilterCat);
+            }
+            
+            // 2. 검색어 필터
+            if (this.historySearchKw.trim()) {
+                const kw = this.historySearchKw.trim().toLowerCase();
+                filtered = filtered.filter(r => 
+                    (r.sub_category && String(r.sub_category).toLowerCase().includes(kw)) || 
+                    (r.memo && String(r.memo).toLowerCase().includes(kw))
+                );
+            }
+
+            // 3. 정렬 옵션
+            if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
+            if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
+            if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
+            if(this.historySort === 'cat_asc') filtered.sort((a,b) => String(a.category).localeCompare(String(b.category)) || String(b.date).localeCompare(String(a.date)));
+            
+            return filtered;
+        },
+        
+        filteredTotal() {
+            return this.sortedRecords.reduce((sum, r) => sum + Number(r.amount), 0);
         }
     },
     methods: {
