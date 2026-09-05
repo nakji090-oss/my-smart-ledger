@@ -9,15 +9,17 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
-        body { background-color: #f0f2f5; font-family: 'Pretendard', sans-serif; padding-bottom: 80px; padding-top: 20px;}
+        body { background-color: #f0f2f5; font-family: 'Pretendard', sans-serif; padding-bottom: 80px; padding-top: 15px;}
         .card { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); }
-        .nav-item { flex: 1; text-align: center; padding: 15px 0; font-size: 13px; font-weight: 600; color: #a0aec0; cursor: pointer; transition: 0.2s; }
+        /* 메뉴가 5개로 늘어났으므로 폰트와 간격을 모바일에 맞게 조절 */
+        .nav-item { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; font-weight: 700; color: #a0aec0; cursor: pointer; transition: 0.2s; }
         .nav-item.active { color: #4f46e5; border-top: 3px solid #4f46e5; background: #f8faff; }
-        .form-control, .form-select { border-radius: 10px; padding: 12px; font-size: 15px; }
-        .btn-primary { background-color: #4f46e5; border: none; border-radius: 12px; padding: 12px; font-weight: bold; }
+        .form-control, .form-select { border-radius: 10px; font-size: 15px; }
+        .btn-primary { background-color: #4f46e5; border: none; border-radius: 12px; font-weight: bold; }
         .loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .metric-box { background: #eef2ff; border-left: 4px solid #4f46e5; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+        .cat-stat-box { background: #fff; border: 1px solid #e9ecef; border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; justify-content: space-between; align-items: center;}
     </style>
 </head>
 <body>
@@ -27,10 +29,9 @@
     <div v-if="isLoading" class="loading-screen">
         <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
         <h5 class="mt-3 fw-bold text-primary">데이터를 동기화 중입니다...</h5>
-        <p class="text-muted">구글 시트와 안전하게 연결하고 있습니다.</p>
     </div>
 
-    <h3 class="fw-bold mb-4 px-2">💰 스마트 가계부</h3>
+    <h3 class="fw-bold mb-3 px-2">💰 스마트 가계부</h3>
 
     <!-- 1. 입력 탭 -->
     <div v-show="currentTab === 'input'">
@@ -39,39 +40,39 @@
             <form @submit.prevent="submitRecord">
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">날짜</label>
-                    <input type="date" v-model="form.date" class="form-control" required>
+                    <input type="date" v-model="form.date" class="form-control py-2" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">금액 (원)</label>
-                    <input type="number" v-model="form.amount" class="form-control" placeholder="0" required>
+                    <input type="number" v-model="form.amount" class="form-control py-2" placeholder="0" required>
                 </div>
                 <div class="row mb-3">
                     <div class="col-6">
                         <label class="form-label text-muted small fw-bold">카테고리</label>
-                        <select v-model="form.category" class="form-select" required>
+                        <select v-model="form.category" class="form-select py-2" required>
                             <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
                         </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label text-muted small fw-bold">상세 항목</label>
-                        <input type="text" v-model="form.sub_category" class="form-control" placeholder="예: 점심, 주유">
+                        <input type="text" v-model="form.sub_category" class="form-control py-2" placeholder="예: 점심, 주유">
                     </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">결제 수단</label>
-                    <select v-model="form.payment_method" class="form-select" required>
+                    <select v-model="form.payment_method" class="form-select py-2" required>
                         <option v-for="pay in paymentMethods" :value="pay">{{ pay }}</option>
                     </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">메모 / 사용처</label>
-                    <input type="text" v-model="form.memo" class="form-control" placeholder="예: 스타벅스">
+                    <input type="text" v-model="form.memo" class="form-control py-2" placeholder="예: 스타벅스">
                 </div>
                 <div class="form-check mb-4 mt-2">
                     <input class="form-check-input" type="checkbox" v-model="form.is_fixed" id="isFixed">
                     <label class="form-check-label fw-bold text-danger" for="isFixed">📌 매달 나가는 고정 지출</label>
                 </div>
-                <button type="submit" class="btn btn-primary w-100 fs-5">💾 지출 내역 저장하기</button>
+                <button type="submit" class="btn btn-primary w-100 py-3 fs-5">💾 지출 내역 저장하기</button>
             </form>
         </div>
     </div>
@@ -105,7 +106,20 @@
             </div>
             
             <h6 class="fw-bold mt-4">🛒 변동지출 카테고리 비중</h6>
-            <div id="pieChart" style="height: 300px;"></div>
+            <div id="pieChart" style="height: 300px; margin-bottom: 10px;"></div>
+            
+            <!-- 새로 추가된 카테고리별 상세 총액 리스트 -->
+            <div class="row g-2 mb-4">
+                <div class="col-6" v-for="(stat, index) in varCategoryStats" :key="index">
+                    <div class="cat-stat-box">
+                        <span class="small fw-bold text-secondary">{{ stat.name }}</span>
+                        <span class="small fw-bold" style="color: #4f46e5;">{{ formatNumber(stat.amount) }}원</span>
+                    </div>
+                </div>
+                <div v-if="varCategoryStats.length === 0" class="col-12 text-center text-muted small py-2">
+                    변동지출 내역이 없습니다.
+                </div>
+            </div>
             
             <hr class="my-4">
             
@@ -114,7 +128,7 @@
         </div>
     </div>
 
-    <!-- 3. 내역 탭 -->
+    <!-- 3. 내역 수정/삭제 탭 -->
     <div v-show="currentTab === 'history'">
         <div class="card p-3">
             <h5 class="fw-bold mb-3">📋 전체 내역 관리</h5>
@@ -127,23 +141,49 @@
             </div>
             
             <div class="table-responsive">
-                <table class="table table-hover align-middle" style="font-size: 14px;">
+                <table class="table align-middle" style="font-size: 14px;">
                     <thead class="table-light">
                         <tr>
                             <th>날짜</th>
-                            <th>카테고리</th>
+                            <th>항목</th>
                             <th class="text-end">금액</th>
-                            <th class="text-center">삭제</th>
+                            <th class="text-center">관리</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="r in sortedRecords" :key="r.id">
-                            <td>{{ r.date.substring(5) }}</td>
-                            <td>{{ r.category }}<br><small class="text-muted">{{ r.sub_category || r.memo }}</small></td>
-                            <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
-                            <td class="text-center">
-                                <button @click="deleteRecord(r.id)" class="btn btn-sm btn-outline-danger px-2 py-0">🗑️</button>
+                            <!-- 수정 모드일 때 보여지는 화면 (인라인 에디터) -->
+                            <td colspan="4" v-if="editingRecordId === r.id" class="bg-light p-3 rounded">
+                                <div class="row g-2">
+                                    <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm"></div>
+                                    <div class="col-6"><input type="number" v-model="editForm.amount" class="form-control form-control-sm"></div>
+                                    <div class="col-6">
+                                        <select v-model="editForm.category" class="form-select form-select-sm">
+                                            <option v-for="cat in expenseCategories">{{cat}}</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6"><input type="text" v-model="editForm.sub_category" class="form-control form-control-sm" placeholder="상세"></div>
+                                    <div class="col-6">
+                                        <select v-model="editForm.payment_method" class="form-select form-select-sm">
+                                            <option v-for="pay in paymentMethods">{{pay}}</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6 text-end">
+                                        <button @click="saveRecordEdit" class="btn btn-sm btn-success fw-bold me-1">저장</button>
+                                        <button @click="cancelEdit" class="btn btn-sm btn-secondary fw-bold">취소</button>
+                                    </div>
+                                </div>
                             </td>
+                            <!-- 기본 내역 보여주는 화면 -->
+                            <template v-else>
+                                <td>{{ r.date.substring(5) }}</td>
+                                <td>{{ r.category }}<br><span class="text-muted" style="font-size:11px;">{{ r.sub_category || r.memo }}</span></td>
+                                <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
+                                <td class="text-center" style="white-space: nowrap;">
+                                    <button @click="startEdit(r)" class="btn btn-sm btn-outline-primary px-2 py-0 me-1">✏️</button>
+                                    <button @click="deleteRecord(r.id)" class="btn btn-sm btn-outline-danger px-2 py-0">🗑️</button>
+                                </td>
+                            </template>
                         </tr>
                         <tr v-if="sortedRecords.length === 0">
                             <td colspan="4" class="text-center text-muted py-4">내역이 없습니다.</td>
@@ -154,35 +194,91 @@
         </div>
     </div>
 
-    <!-- 4. 관리 탭 -->
-    <div v-show="currentTab === 'settings'">
-        <div class="card p-4">
-            <h5 class="fw-bold mb-4">⚙️ 카테고리 / 결제수단 관리</h5>
-            <div class="alert alert-info small">💡 수정 후 아래 저장 버튼을 눌러야 반영됩니다. 각 줄에 하나씩 입력하세요.</div>
+    <!-- 4. 고정비 일괄등록 탭 (새로 복구됨) -->
+    <div v-show="currentTab === 'fixed'">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3">📌 정기 고정비 일괄 등록</h5>
+            <div class="alert alert-primary small py-2 mb-3">💡 등록할 날짜를 지정하고 이번 달 고정비를 한 번에 추가하세요.</div>
             
-            <label class="form-label fw-bold mt-2">지출 카테고리</label>
-            <textarea v-model="settingsExpText" class="form-control mb-3" rows="6"></textarea>
+            <div class="mb-4">
+                <label class="form-label small fw-bold">등록 기준 일자</label>
+                <input type="date" v-model="batchDate" class="form-control">
+            </div>
             
-            <label class="form-label fw-bold">결제 수단</label>
-            <textarea v-model="settingsPayText" class="form-control mb-4" rows="5"></textarea>
-            
-            <button @click="saveSettings" class="btn btn-dark w-100 fs-5">💾 설정 영구 저장</button>
+            <button @click="executeBatch" class="btn btn-primary w-100 py-3 mb-4 fs-6">🚀 체크된 항목 일괄 등록 실행</button>
+
+            <h6 class="fw-bold mb-3">✔️ 고정비 템플릿 목록</h6>
+            <ul class="list-group mb-4">
+                <li class="list-group-item d-flex align-items-center" v-for="t in fixedTemplates" :key="t.id">
+                    <input class="form-check-input me-3 fs-5" type="checkbox" :value="t.id" v-model="selectedTemplates">
+                    <div class="flex-grow-1">
+                        <div class="fw-bold">{{t.category}} <span class="text-muted small">({{t.sub_category}})</span></div>
+                        <div class="text-primary fw-bold">{{formatNumber(t.default_amount)}}원</div>
+                    </div>
+                    <button @click="deleteTemplate(t.id)" class="btn btn-sm btn-outline-danger px-2">삭제</button>
+                </li>
+                <li class="list-group-item text-center text-muted small py-3" v-if="fixedTemplates.length === 0">
+                    등록된 템플릿이 없습니다. 아래에서 추가해보세요.
+                </li>
+            </ul>
+
+            <h6 class="fw-bold mb-2">➕ 새 고정비 템플릿 추가</h6>
+            <div class="bg-light p-3 rounded">
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <select v-model="newTemplate.category" class="form-select form-select-sm">
+                            <option value="">카테고리 선택</option>
+                            <option v-for="c in expenseCategories">{{c}}</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <input type="text" v-model="newTemplate.sub_category" class="form-control form-control-sm" placeholder="상세항목">
+                    </div>
+                    <div class="col-6">
+                        <input type="number" v-model="newTemplate.default_amount" class="form-control form-control-sm" placeholder="기본 금액">
+                    </div>
+                    <div class="col-6">
+                        <select v-model="newTemplate.default_payment" class="form-select form-select-sm">
+                            <option value="">결제수단 선택</option>
+                            <option v-for="p in paymentMethods">{{p}}</option>
+                        </select>
+                    </div>
+                </div>
+                <button @click="addTemplate" class="btn btn-dark btn-sm w-100 fw-bold py-2">템플릿 목록에 추가하기</button>
+            </div>
         </div>
     </div>
 
-    <!-- 하단 네비게이션 바 (모바일 앱 스타일) -->
+    <!-- 5. 관리 탭 -->
+    <div v-show="currentTab === 'settings'">
+        <div class="card p-4">
+            <h5 class="fw-bold mb-4">⚙️ 카테고리 / 결제수단 관리</h5>
+            <div class="alert alert-info small">💡 텍스트 박스 안에서 줄바꿈으로 추가/삭제/순서변경 후 아래 저장 버튼을 누르세요.</div>
+            
+            <label class="form-label fw-bold mt-2">🛒 지출 카테고리</label>
+            <textarea v-model="settingsExpText" class="form-control mb-3" rows="6"></textarea>
+            
+            <label class="form-label fw-bold">💳 결제 수단 / 카드</label>
+            <textarea v-model="settingsPayText" class="form-control mb-4" rows="5"></textarea>
+            
+            <button @click="saveSettings" class="btn btn-dark w-100 fs-5 py-3">💾 설정 영구 저장</button>
+        </div>
+    </div>
+
+    <!-- 하단 네비게이션 바 (메뉴 5개 적용) -->
     <div class="bottom-nav">
         <div class="nav-item" :class="{active: currentTab === 'input'}" @click="changeTab('input')">📝 입력</div>
         <div class="nav-item" :class="{active: currentTab === 'stats'}" @click="changeTab('stats')">📊 분석</div>
         <div class="nav-item" :class="{active: currentTab === 'history'}" @click="changeTab('history')">📋 내역</div>
-        <div class="nav-item" :class="{active: currentTab === 'settings'}" @click="changeTab('settings')">⚙️ 관리</div>
+        <div class="nav-item" :class="{active: currentTab === 'fixed'}" @click="changeTab('fixed')">📌 고정비</div>
+        <div class="nav-item" :class="{active: currentTab === 'settings'}" @click="changeTab('settings')">⚙️ 설정</div>
     </div>
 
 </div>
 
 <script>
 // =========================================================================
-// 🚨 [필수] 여기에 아까 복사하신 구글 앱스 스크립트 '웹 앱 URL'을 붙여넣으세요!
+// 🚨 선생님의 완벽한 구글 스크립트 연결 주소입니다. (수정하지 않으셔도 됩니다!)
 // =========================================================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwZY8pgr3jts0HV3U4X-9usjvECcqkOOK4048Kcth5pErk_cpc1STaP8fumaxyP4Jdx/exec";
 
@@ -193,11 +289,21 @@ const app = Vue.createApp({
             currentTab: 'input',
             records: [],
             settings: [],
+            fixedTemplates: [],
             
             form: {
                 date: new Date().toISOString().split('T')[0],
                 amount: '', category: '', sub_category: '', payment_method: '', is_fixed: false, memo: ''
             },
+            
+            // 내역 수정(Edit)용 변수
+            editingRecordId: null,
+            editForm: {},
+
+            // 고정비 일괄등록용 변수
+            batchDate: new Date().toISOString().split('T')[0],
+            selectedTemplates: [],
+            newTemplate: { category: '', sub_category: '', default_amount: '', default_payment: '', memo: '' },
             
             selectedMonth: new Date().toISOString().slice(0,7),
             historySort: 'date_desc',
@@ -222,8 +328,18 @@ const app = Vue.createApp({
             return this.records.filter(r => String(r.date).startsWith(this.selectedMonth));
         },
         monthlyTotal() { return this.currentMonthRecords.reduce((sum, r) => sum + Number(r.amount), 0); },
-        monthlyFixed() { return this.currentMonthRecords.filter(r => r.is_fixed == 1 || r.is_fixed === 'TRUE').reduce((sum, r) => sum + Number(r.amount), 0); },
+        monthlyFixed() { return this.currentMonthRecords.filter(r => r.is_fixed == 1 || r.is_fixed === 'TRUE' || r.is_fixed === true).reduce((sum, r) => sum + Number(r.amount), 0); },
         monthlyVar() { return this.monthlyTotal - this.monthlyFixed; },
+        
+        // 새로 추가됨: 카테고리별 변동지출 총액 계산 및 정렬
+        varCategoryStats() {
+            let varRecords = this.currentMonthRecords.filter(r => r.is_fixed == 0 || r.is_fixed === 'FALSE' || r.is_fixed === false);
+            let catSums = {};
+            varRecords.forEach(r => { catSums[r.category] = (catSums[r.category]||0) + Number(r.amount); });
+            let stats = Object.keys(catSums).map(k => ({ name: k, amount: catSums[k] }));
+            stats.sort((a,b) => b.amount - a.amount); // 금액 큰 순 정렬
+            return stats;
+        },
         
         sortedRecords() {
             let sorted = [...this.records];
@@ -265,15 +381,20 @@ const app = Vue.createApp({
                 if(res.success) {
                     this.records = this.parseSheetData(res.records);
                     this.settings = this.parseSheetData(res.settings);
+                    this.fixedTemplates = this.parseSheetData(res.fixed_templates);
                     
-                    if(this.expenseCategories.length > 0) this.form.category = this.expenseCategories[0];
-                    if(this.paymentMethods.length > 0) this.form.payment_method = this.paymentMethods[0];
+                    // 기본값 셋팅
+                    if(this.expenseCategories.length > 0 && !this.form.category) this.form.category = this.expenseCategories[0];
+                    if(this.paymentMethods.length > 0 && !this.form.payment_method) this.form.payment_method = this.paymentMethods[0];
                     
                     this.settingsExpText = this.expenseCategories.join('\n');
                     this.settingsPayText = this.paymentMethods.join('\n');
+                    
+                    // 고정비 템플릿 기본 전체 선택
+                    this.selectedTemplates = this.fixedTemplates.map(t => t.id);
                 }
             } catch(e) {
-                alert('데이터를 불러오지 못했습니다. URL을 다시 확인해주세요.');
+                alert('데이터를 불러오지 못했습니다. 새로고침을 시도해주세요.');
             }
             this.isLoading = false;
         },
@@ -298,12 +419,41 @@ const app = Vue.createApp({
             } catch(e) { alert('오류가 발생했습니다.'); }
             this.isLoading = false;
         },
+        
+        // ✏️ 인라인 에디터 시작
+        startEdit(record) {
+            this.editingRecordId = record.id;
+            this.editForm = { ...record };
+            this.editForm.is_fixed = (record.is_fixed == 1 || record.is_fixed === 'TRUE');
+        },
+        cancelEdit() {
+            this.editingRecordId = null;
+        },
+        async saveRecordEdit() {
+            this.isLoading = true;
+            // 배열 내 수정
+            const idx = this.records.findIndex(r => r.id === this.editingRecordId);
+            if(idx > -1) {
+                this.records[idx] = { ...this.editForm, is_fixed: this.editForm.is_fixed ? 1 : 0 };
+            }
+            // 구글 시트에 덮어쓰기
+            const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
+            const dataToSave = [headers, ...this.records.map(r => [r.id, r.date, r.category, r.sub_category, r.amount, r.payment_method, r.is_fixed, r.memo])];
+            
+            await fetch(WEB_APP_URL, {
+                method: 'POST', headers: {'Content-Type': 'text/plain'},
+                body: JSON.stringify({action: 'overwrite_sheet', sheet_name: 'records', data: dataToSave})
+            });
+            this.editingRecordId = null;
+            await this.fetchData();
+        },
+
         async deleteRecord(id) {
             if(!confirm('정말 삭제하시겠습니까?')) return;
             this.isLoading = true;
-            const updatedRecords = this.records.filter(r => String(r.id) !== String(id));
+            this.records = this.records.filter(r => String(r.id) !== String(id));
             const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
-            const dataToSave = [headers, ...updatedRecords.map(r => [r.id, r.date, r.category, r.sub_category, r.amount, r.payment_method, r.is_fixed, r.memo])];
+            const dataToSave = [headers, ...this.records.map(r => [r.id, r.date, r.category, r.sub_category, r.amount, r.payment_method, r.is_fixed, r.memo])];
             
             await fetch(WEB_APP_URL, {
                 method: 'POST', headers: {'Content-Type': 'text/plain'},
@@ -311,6 +461,54 @@ const app = Vue.createApp({
             });
             await this.fetchData();
         },
+
+        // 📌 고정비 관련 로직
+        async addTemplate() {
+            if(!this.newTemplate.category || !this.newTemplate.default_amount) return alert('카테고리와 금액을 입력해주세요.');
+            this.isLoading = true;
+            const newId = this.fixedTemplates.length > 0 ? Math.max(...this.fixedTemplates.map(t=>Number(t.id))) + 1 : 1;
+            this.fixedTemplates.push({
+                id: newId, category: this.newTemplate.category, sub_category: this.newTemplate.sub_category,
+                default_amount: this.newTemplate.default_amount, default_payment: this.newTemplate.default_payment, memo: ''
+            });
+            await this.syncTemplates();
+            this.newTemplate = { category: '', sub_category: '', default_amount: '', default_payment: '', memo: '' };
+        },
+        async deleteTemplate(id) {
+            if(!confirm('템플릿을 삭제하시겠습니까?')) return;
+            this.isLoading = true;
+            this.fixedTemplates = this.fixedTemplates.filter(t => t.id !== id);
+            await this.syncTemplates();
+        },
+        async syncTemplates() {
+            const headers = ["id", "category", "sub_category", "default_amount", "default_payment", "memo"];
+            const dataToSave = [headers, ...this.fixedTemplates.map(t => [t.id, t.category, t.sub_category, t.default_amount, t.default_payment, t.memo])];
+            await fetch(WEB_APP_URL, {
+                method: 'POST', headers: {'Content-Type': 'text/plain'},
+                body: JSON.stringify({action: 'overwrite_sheet', sheet_name: 'fixed_templates', data: dataToSave})
+            });
+            await this.fetchData();
+        },
+        async executeBatch() {
+            if(this.selectedTemplates.length === 0) return alert('등록할 항목을 체크해주세요.');
+            this.isLoading = true;
+            const toInsert = this.fixedTemplates
+                .filter(t => this.selectedTemplates.includes(t.id))
+                .map(t => ({
+                    date: this.batchDate, category: t.category, sub_category: t.sub_category,
+                    amount: t.default_amount, payment_method: t.default_payment, is_fixed: 1, memo: t.memo
+                }));
+            try {
+                await fetch(WEB_APP_URL, {
+                    method: 'POST', headers: {'Content-Type': 'text/plain'},
+                    body: JSON.stringify({action: 'batch_add', data: toInsert})
+                });
+                alert(`총 ${toInsert.length}건이 성공적으로 등록되었습니다!`);
+                await this.fetchData();
+            } catch(e) { alert('오류가 발생했습니다.'); }
+            this.isLoading = false;
+        },
+
         async saveSettings() {
             this.isLoading = true;
             const exp = this.settingsExpText.split('\n').map(s=>s.trim()).filter(s=>s);
@@ -328,18 +526,17 @@ const app = Vue.createApp({
             alert('설정이 저장되었습니다.');
             await this.fetchData();
         },
+
         drawCharts() {
-            // 1. 파이 차트 (변동지출 비중)
-            let varRecords = this.currentMonthRecords.filter(r => r.is_fixed == 0 || r.is_fixed === 'FALSE');
-            let catSums = {};
-            varRecords.forEach(r => { catSums[r.category] = (catSums[r.category]||0) + Number(r.amount); });
+            // 1. 파이 차트 (변동지출 비중 - 알록달록한 색상 적용)
+            const vibrantColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#EA6B66', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC'];
             
             let pieData = [{
-                values: Object.values(catSums),
-                labels: Object.keys(catSums),
-                type: 'pie', hole: 0.4,
+                values: this.varCategoryStats.map(s => s.amount),
+                labels: this.varCategoryStats.map(s => s.name),
+                type: 'pie', hole: 0.45,
                 textinfo: 'label+percent',
-                marker: { colors: ['#4f46e5', '#6366f1', '#818cf8', '#c7d2fe', '#e0e7ff', '#312e81', '#4338ca'] }
+                marker: { colors: vibrantColors }
             }];
             let pieLayout = { margin: {t:10, b:10, l:10, r:10}, showlegend: false };
             Plotly.newPlot('pieChart', pieData, pieLayout, {displayModeBar: false});
@@ -350,7 +547,7 @@ const app = Vue.createApp({
             
             this.records.forEach(r => {
                 let ym = String(r.date).substring(0,7);
-                let isVar = (r.is_fixed == 0 || r.is_fixed === 'FALSE');
+                let isVar = (r.is_fixed == 0 || r.is_fixed === 'FALSE' || r.is_fixed === false);
                 if(months.includes(ym) && isVar) {
                     if(!trendData[ym]) trendData[ym] = {};
                     trendData[ym][r.category] = (trendData[ym][r.category]||0) + Number(r.amount);
@@ -358,10 +555,14 @@ const app = Vue.createApp({
             });
 
             let traces = [];
-            this.expenseCategories.forEach(cat => {
+            this.expenseCategories.forEach((cat, idx) => {
                 let yValues = months.map(m => trendData[m] ? (trendData[m][cat]||0) : 0);
                 if(yValues.some(v => v > 0)) {
-                    traces.push({ x: months, y: yValues, name: cat, type: 'bar', text: yValues, textposition: 'inside', texttemplate: '%{y:,}' });
+                    traces.push({ 
+                        x: months, y: yValues, name: cat, type: 'bar', 
+                        text: yValues, textposition: 'inside', texttemplate: '%{y:,}',
+                        marker: { color: vibrantColors[idx % vibrantColors.length] } // 바 차트도 색상 통일
+                    });
                 }
             });
             let barLayout = { barmode: 'stack', margin: {t:20, b:30, l:40, r:10}, legend: {orientation: 'h', y: -0.2} };
