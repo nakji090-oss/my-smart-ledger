@@ -1,15 +1,22 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>스마트 가계부</title>
+    
+    <!-- 📱 바탕화면 바로가기 전용 아이콘 설정 -->
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2936/2936758.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/2936/2936758.png">
+    <meta name="mobile-web-app-capable" content="yes">
+
     <!-- 디자인(Bootstrap) 및 기능(Vue3, Plotly) 라이브러리 로드 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    
     <style>
-        /* 다크모드 대응 CSS 변수 설정 */
+        /* 다크모드 대응 CSS 변수 세밀한 설정 */
         :root {
             --app-bg: #f0f2f5;
             --nav-bg: #ffffff;
@@ -17,6 +24,9 @@
             --nav-active-bg: #f8faff;
             --metric-bg: #eef2ff;
             --cat-stat-bg: #ffffff;
+            --text-total: #312e81; 
+            --text-accent: #4f46e5; 
+            --table-header: #f8f9fa;
         }
         [data-bs-theme="dark"] {
             --app-bg: #121212;
@@ -25,34 +35,38 @@
             --nav-active-bg: #2d2d2d;
             --metric-bg: #2d3748;
             --cat-stat-bg: #2d2d2d;
+            --text-total: #e2e8f0; 
+            --text-accent: #818cf8; 
+            --table-header: #212529;
         }
         
         body { background-color: var(--app-bg); font-family: 'Pretendard', sans-serif; padding-bottom: 80px; padding-top: 15px; transition: background-color 0.3s; }
         .card { border-radius: 15px; border: none; background-color: var(--card-bg); box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; transition: 0.3s; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background-color: var(--nav-bg); box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); transition: 0.3s; }
         .nav-item { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; font-weight: 700; color: #a0aec0; cursor: pointer; transition: 0.2s; }
-        .nav-item.active { color: #4f46e5; border-top: 3px solid #4f46e5; background-color: var(--nav-active-bg); }
+        .nav-item.active { color: var(--text-accent); border-top: 3px solid var(--text-accent); background-color: var(--nav-active-bg); }
         .form-control, .form-select { border-radius: 10px; font-size: 15px; }
         .btn-primary { background-color: #4f46e5; border: none; border-radius: 12px; font-weight: bold; }
         .loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         
         /* 통계 위젯 박스 디자인 */
-        .metric-box { background-color: var(--metric-bg); border-left: 4px solid #4f46e5; padding: 15px; border-radius: 10px; margin-bottom: 15px; transition: 0.3s;}
+        .metric-box { background-color: var(--metric-bg); border-left: 4px solid var(--text-accent); padding: 15px; border-radius: 10px; margin-bottom: 15px; transition: 0.3s;}
         .cat-stat-box { background-color: var(--cat-stat-bg); border: 1px solid var(--bs-border-color); border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; justify-content: space-between; align-items: center; transition: 0.3s;}
+        .table-custom-header th { background-color: var(--table-header); color: var(--bs-body-color); border-bottom: 2px solid var(--bs-border-color); }
     </style>
 </head>
 <body>
 <div id="app" class="container-fluid" style="max-width: 800px;">
     
     <!-- 로딩 화면 -->
-    <div v-if="isLoading" class="loading-screen">
-        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
-        <h5 class="mt-3 fw-bold text-primary">데이터를 동기화 중입니다...</h5>
+    <div v-if="isLoading" class="loading-screen" :style="isDark ? 'background: rgba(0,0,0,0.8);' : ''">
+        <div class="spinner-border" :class="isDark ? 'text-light' : 'text-primary'" role="status" style="width: 3rem; height: 3rem;"></div>
+        <h5 class="mt-3 fw-bold" :class="isDark ? 'text-light' : 'text-primary'">데이터를 동기화 중입니다...</h5>
     </div>
 
     <!-- 🌙 다크모드 스위치를 포함한 상단 헤더 -->
     <div class="d-flex justify-content-between align-items-center mb-3 px-2 mt-2">
-        <h3 class="fw-bold mb-0">💰 스마트 가계부</h3>
+        <h3 class="fw-bold mb-0 text-body">💰 스마트 가계부</h3>
         <button @click="toggleDarkMode" class="btn btn-sm btn-outline-secondary rounded-pill fw-bold fs-5 px-3">
             {{ isDark ? '☀️' : '🌙' }}
         </button>
@@ -61,38 +75,37 @@
     <!-- 1. 입력 탭 -->
     <div v-show="currentTab === 'input'">
         <div class="card p-4">
-            <h5 class="fw-bold mb-4">📝 새로운 지출 입력</h5>
+            <h5 class="fw-bold mb-4 text-body">📝 새로운 지출 입력</h5>
             <form @submit.prevent="submitRecord">
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">날짜</label>
-                    <input type="date" v-model="form.date" class="form-control py-2" required>
+                    <input type="date" v-model="form.date" class="form-control py-2 bg-body text-body" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">금액 (원)</label>
-                    <!-- 💰 천 단위 콤마 자동 생성 인풋 -->
-                    <input type="text" :value="formattedFormAmount" @input="updateFormAmount" class="form-control py-2 fw-bold text-primary" placeholder="0" required>
+                    <input type="text" :value="formattedFormAmount" @input="updateFormAmount" class="form-control py-2 fw-bold text-primary bg-body" placeholder="0" required>
                 </div>
                 <div class="row mb-3">
                     <div class="col-6">
                         <label class="form-label text-muted small fw-bold">카테고리</label>
-                        <select v-model="form.category" class="form-select py-2" required>
+                        <select v-model="form.category" class="form-select py-2 bg-body text-body" required>
                             <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
                         </select>
                     </div>
                     <div class="col-6">
                         <label class="form-label text-muted small fw-bold">상세 항목</label>
-                        <input type="text" v-model="form.sub_category" class="form-control py-2" placeholder="예: 점심, 주유">
+                        <input type="text" v-model="form.sub_category" class="form-control py-2 bg-body text-body" placeholder="예: 점심, 주유">
                     </div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">결제 수단</label>
-                    <select v-model="form.payment_method" class="form-select py-2" required>
+                    <select v-model="form.payment_method" class="form-select py-2 bg-body text-body" required>
                         <option v-for="pay in paymentMethods" :value="pay">{{ pay }}</option>
                     </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">메모 / 사용처</label>
-                    <input type="text" v-model="form.memo" class="form-control py-2" placeholder="예: 사용처">
+                    <input type="text" v-model="form.memo" class="form-control py-2 bg-body text-body" placeholder="예: 사용처">
                 </div>
                 <div class="form-check mb-4 mt-2">
                     <input class="form-check-input" type="checkbox" v-model="form.is_fixed" id="isFixed">
@@ -106,14 +119,14 @@
     <!-- 2. 통계 탭 -->
     <div v-show="currentTab === 'stats'">
         <div class="card p-4">
-            <h5 class="fw-bold mb-3">📊 월별 지출 분석</h5>
-            <select v-model="selectedMonth" @change="drawCharts" class="form-select mb-4">
+            <h5 class="fw-bold mb-3 text-body">📊 월별 지출 분석</h5>
+            <select v-model="selectedMonth" @change="drawCharts" class="form-select mb-4 bg-body text-body">
                 <option v-for="m in availableMonths" :value="m">{{ m }}</option>
             </select>
             
             <div class="metric-box">
                 <div class="text-muted small fw-bold">이번 달 총 지출</div>
-                <div class="fs-2 fw-bold" style="color: #312e81;">{{ formatNumber(monthlyTotal) }} 원</div>
+                <div class="fs-2 fw-bold" style="color: var(--text-total);">{{ formatNumber(monthlyTotal) }} 원</div>
             </div>
             
             <div class="row text-center mb-4">
@@ -131,14 +144,14 @@
                 </div>
             </div>
             
-            <h6 class="fw-bold mt-4">🛒 변동지출 카테고리 비중</h6>
+            <h6 class="fw-bold mt-4 text-body">🛒 변동지출 카테고리 비중</h6>
             <div id="pieChart" style="height: 300px; margin-bottom: 10px;"></div>
             
             <div class="row g-2 mb-4">
                 <div class="col-6" v-for="(stat, index) in varCategoryStats" :key="index">
                     <div class="cat-stat-box">
                         <span class="small fw-bold text-secondary">{{ stat.name }}</span>
-                        <span class="small fw-bold" style="color: #4f46e5;">{{ formatNumber(stat.amount) }}원</span>
+                        <span class="small fw-bold" style="color: var(--text-accent);">{{ formatNumber(stat.amount) }}원</span>
                     </div>
                 </div>
                 <div v-if="varCategoryStats.length === 0" class="col-12 text-center text-muted small py-2">
@@ -146,9 +159,9 @@
                 </div>
             </div>
             
-            <hr class="my-4">
+            <hr class="my-4 border-secondary">
             
-            <h5 class="fw-bold mb-3">📈 최근 6개월 변동지출 추이</h5>
+            <h5 class="fw-bold mb-3 text-body">📈 최근 6개월 변동지출 추이</h5>
             <div id="barChart" style="height: 350px;"></div>
         </div>
     </div>
@@ -157,28 +170,25 @@
     <div v-show="currentTab === 'history'">
         <div class="card p-3">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="fw-bold mb-0">📋 전체 내역 관리</h5>
-                <!-- 📥 엑셀 다운로드 버튼 -->
+                <h5 class="fw-bold mb-0 text-body">📋 전체 내역 관리</h5>
                 <button @click="downloadCSV" class="btn btn-sm btn-dark fw-bold px-3">📥 엑셀 백업</button>
             </div>
             
-            <!-- 필터, 검색, 정렬 도구 추가 -->
             <div class="row g-2 mb-3">
                 <div class="col-4">
-                    <!-- 📅 월별 조회 필터 -->
-                    <select v-model="historyFilterMonth" class="form-select bg-body-tertiary text-secondary fw-bold" style="font-size: 13px;">
+                    <select v-model="historyFilterMonth" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
                         <option value="전체 월">📅 전체 월</option>
                         <option v-for="m in availableMonths" :value="m">{{ m }}</option>
                     </select>
                 </div>
                 <div class="col-4">
-                    <select v-model="historyFilterCat" class="form-select bg-body-tertiary text-secondary fw-bold" style="font-size: 13px;">
+                    <select v-model="historyFilterCat" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
                         <option value="">📂 전 항목</option>
                         <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
                     </select>
                 </div>
                 <div class="col-4">
-                    <select v-model="historySort" class="form-select bg-body-tertiary text-secondary fw-bold" style="font-size: 13px;">
+                    <select v-model="historySort" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
                         <option value="date_desc">최신순</option>
                         <option value="date_asc">과거순</option>
                         <option value="amt_desc">금액순</option>
@@ -186,18 +196,17 @@
                     </select>
                 </div>
                 <div class="col-12">
-                    <input type="text" v-model="historySearchKw" class="form-control bg-body-tertiary" placeholder="🔎 검색 (상세 항목이나 사용처 입력)" style="font-size: 13px;">
+                    <input type="text" v-model="historySearchKw" class="form-control bg-body-tertiary text-body" placeholder="🔎 검색 (상세 항목이나 사용처 입력)" style="font-size: 13px;">
                 </div>
             </div>
 
-            <!-- 현재 조회된 리스트의 갯수와 총액 요약 -->
-            <div class="text-end mb-2 small fw-bold" style="color: #4f46e5;">
+            <div class="text-end mb-2 small fw-bold" style="color: var(--text-accent);">
                 조회결과: 총 {{ sortedRecords.length }}건 ({{ formatNumber(filteredTotal) }}원)
             </div>
             
             <div class="table-responsive">
-                <table class="table align-middle" style="font-size: 13px;">
-                    <thead class="table-light">
+                <table class="table align-middle text-body" style="font-size: 13px;">
+                    <thead class="table-custom-header">
                         <tr>
                             <th>날짜</th>
                             <th>항목</th>
@@ -207,20 +216,18 @@
                     </thead>
                     <tbody>
                         <tr v-for="r in sortedRecords" :key="r.id">
-                            <!-- 수정 모드 뷰 -->
                             <td colspan="4" v-if="editingRecordId === r.id" class="bg-body-tertiary p-3 rounded">
                                 <div class="row g-2">
-                                    <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm"></div>
-                                    <!-- 수정 시에도 콤마 적용 -->
-                                    <div class="col-6"><input type="text" :value="formattedEditAmount" @input="updateEditAmount" class="form-control form-control-sm text-primary fw-bold"></div>
+                                    <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm bg-body text-body"></div>
+                                    <div class="col-6"><input type="text" :value="formattedEditAmount" @input="updateEditAmount" class="form-control form-control-sm text-primary fw-bold bg-body"></div>
                                     <div class="col-6">
-                                        <select v-model="editForm.category" class="form-select form-select-sm">
+                                        <select v-model="editForm.category" class="form-select form-select-sm bg-body text-body">
                                             <option v-for="cat in expenseCategories">{{cat}}</option>
                                         </select>
                                     </div>
-                                    <div class="col-6"><input type="text" v-model="editForm.sub_category" class="form-control form-control-sm" placeholder="상세"></div>
+                                    <div class="col-6"><input type="text" v-model="editForm.sub_category" class="form-control form-control-sm bg-body text-body" placeholder="상세"></div>
                                     <div class="col-6">
-                                        <select v-model="editForm.payment_method" class="form-select form-select-sm">
+                                        <select v-model="editForm.payment_method" class="form-select form-select-sm bg-body text-body">
                                             <option v-for="pay in paymentMethods">{{pay}}</option>
                                         </select>
                                     </div>
@@ -230,13 +237,11 @@
                                     </div>
                                 </div>
                             </td>
-                            <!-- 일반 목록 뷰 -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
                                 <td>{{ r.category }}<br><span class="text-muted" style="font-size:11px;">{{ r.sub_category || r.memo }}</span></td>
                                 <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
                                 <td class="text-center p-1" style="white-space: nowrap;">
-                                    <!-- 🔄 복사 버튼 추가됨 -->
                                     <button @click="copyRecord(r)" class="btn btn-sm btn-outline-info px-2 py-0 me-1" title="이 내역으로 새 지출 작성">📑</button>
                                     <button @click="startEdit(r)" class="btn btn-sm btn-outline-primary px-2 py-0 me-1" title="수정">✏️</button>
                                     <button @click="deleteRecord(r.id)" class="btn btn-sm btn-outline-danger px-2 py-0" title="삭제">🗑️</button>
@@ -255,23 +260,23 @@
     <!-- 4. 고정비 일괄등록 탭 -->
     <div v-show="currentTab === 'fixed'">
         <div class="card p-3">
-            <h5 class="fw-bold mb-3">📌 정기 고정비 일괄 등록</h5>
+            <h5 class="fw-bold mb-3 text-body">📌 정기 고정비 일괄 등록</h5>
             <div class="alert alert-primary small py-2 mb-3">💡 등록할 날짜를 지정하고 이번 달 고정비를 한 번에 추가하세요.</div>
             
             <div class="mb-4">
-                <label class="form-label small fw-bold">등록 기준 일자</label>
-                <input type="date" v-model="batchDate" class="form-control">
+                <label class="form-label small fw-bold text-muted">등록 기준 일자</label>
+                <input type="date" v-model="batchDate" class="form-control bg-body text-body">
             </div>
             
             <button @click="executeBatch" class="btn btn-primary w-100 py-3 mb-4 fs-6">🚀 체크된 항목 일괄 등록 실행</button>
 
-            <h6 class="fw-bold mb-3">✔️ 고정비 템플릿 목록</h6>
+            <h6 class="fw-bold mb-3 text-body">✔️ 고정비 템플릿 목록</h6>
             <ul class="list-group mb-4">
                 <li class="list-group-item bg-body text-body d-flex align-items-center" v-for="t in fixedTemplates" :key="t.id">
-                    <input class="form-check-input me-3 fs-5" type="checkbox" :value="t.id" v-model="selectedTemplates">
+                    <input class="form-check-input me-3 fs-5 mt-0" type="checkbox" :value="t.id" v-model="selectedTemplates">
                     <div class="flex-grow-1">
                         <div class="fw-bold">{{t.category}} <span class="text-muted small">({{t.sub_category}})</span></div>
-                        <div class="text-primary fw-bold">{{formatNumber(t.default_amount)}}원</div>
+                        <div class="fw-bold" style="color: var(--text-accent);">{{formatNumber(t.default_amount)}}원</div>
                     </div>
                     <button @click="deleteTemplate(t.id)" class="btn btn-sm btn-outline-danger px-2">삭제</button>
                 </li>
@@ -280,24 +285,23 @@
                 </li>
             </ul>
 
-            <h6 class="fw-bold mb-2">➕ 새 고정비 템플릿 추가</h6>
+            <h6 class="fw-bold mb-2 text-body">➕ 새 고정비 템플릿 추가</h6>
             <div class="bg-body-tertiary border p-3 rounded">
                 <div class="row g-2 mb-2">
                     <div class="col-6">
-                        <select v-model="newTemplate.category" class="form-select form-select-sm">
+                        <select v-model="newTemplate.category" class="form-select form-select-sm bg-body text-body">
                             <option value="">카테고리 선택</option>
                             <option v-for="c in expenseCategories">{{c}}</option>
                         </select>
                     </div>
                     <div class="col-6">
-                        <input type="text" v-model="newTemplate.sub_category" class="form-control form-control-sm" placeholder="상세항목">
+                        <input type="text" v-model="newTemplate.sub_category" class="form-control form-control-sm bg-body text-body" placeholder="상세항목">
                     </div>
                     <div class="col-6">
-                        <!-- 여기도 콤마 입력 지원 (심플버전) -->
-                        <input type="text" :value="newTemplate.default_amount ? Number(newTemplate.default_amount).toLocaleString('ko-KR') : ''" @input="e => newTemplate.default_amount = e.target.value.replace(/[^0-9]/g, '')" class="form-control form-control-sm" placeholder="기본 금액">
+                        <input type="text" :value="newTemplate.default_amount ? Number(newTemplate.default_amount).toLocaleString('ko-KR') : ''" @input="e => newTemplate.default_amount = e.target.value.replace(/[^0-9]/g, '')" class="form-control form-control-sm bg-body text-body" placeholder="기본 금액">
                     </div>
                     <div class="col-6">
-                        <select v-model="newTemplate.default_payment" class="form-select form-select-sm">
+                        <select v-model="newTemplate.default_payment" class="form-select form-select-sm bg-body text-body">
                             <option value="">결제수단 선택</option>
                             <option v-for="p in paymentMethods">{{p}}</option>
                         </select>
@@ -311,13 +315,13 @@
     <!-- 5. 관리 탭 -->
     <div v-show="currentTab === 'settings'">
         <div class="card p-4">
-            <h5 class="fw-bold mb-4">⚙️ 카테고리 / 결제수단 관리</h5>
+            <h5 class="fw-bold mb-4 text-body">⚙️ 카테고리 / 결제수단 관리</h5>
             <div class="alert alert-info small">💡 텍스트 박스 안에서 줄바꿈으로 추가/삭제/순서변경 후 아래 저장 버튼을 누르세요.</div>
             
-            <label class="form-label fw-bold mt-2">🛒 지출 카테고리</label>
+            <label class="form-label fw-bold mt-2 text-body">🛒 지출 카테고리</label>
             <textarea v-model="settingsExpText" class="form-control bg-body text-body mb-3" rows="6"></textarea>
             
-            <label class="form-label fw-bold">💳 결제 수단 / 카드</label>
+            <label class="form-label fw-bold text-body">💳 결제 수단 / 카드</label>
             <textarea v-model="settingsPayText" class="form-control bg-body text-body mb-4" rows="5"></textarea>
             
             <button @click="saveSettings" class="btn btn-dark w-100 fs-5 py-3">💾 설정 영구 저장</button>
@@ -362,7 +366,7 @@ const app = Vue.createApp({
             
             selectedMonth: new Date().toISOString().slice(0,7),
             historySort: 'date_desc',
-            historyFilterMonth: '전체 월', // 📅 월 필터 변수
+            historyFilterMonth: '전체 월',
             historyFilterCat: '',
             historySearchKw: '',
             
@@ -371,7 +375,6 @@ const app = Vue.createApp({
         }
     },
     computed: {
-        // 💰 천단위 콤마 포맷용 (Input)
         formattedFormAmount() {
             return this.form.amount ? Number(this.form.amount).toLocaleString('ko-KR') : '';
         },
@@ -409,15 +412,12 @@ const app = Vue.createApp({
         sortedRecords() {
             let filtered = [...this.records];
             
-            // 📅 월 필터 적용
             if (this.historyFilterMonth !== '전체 월') {
                 filtered = filtered.filter(r => String(r.date).startsWith(this.historyFilterMonth));
             }
-            // 📂 카테고리 필터 적용
             if (this.historyFilterCat) {
                 filtered = filtered.filter(r => r.category === this.historyFilterCat);
             }
-            // 🔎 검색어 필터 적용
             if (this.historySearchKw.trim()) {
                 const kw = this.historySearchKw.trim().toLowerCase();
                 filtered = filtered.filter(r => 
@@ -425,7 +425,7 @@ const app = Vue.createApp({
                     (r.memo && String(r.memo).toLowerCase().includes(kw))
                 );
             }
-            // ↕️ 정렬 적용
+            
             if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
@@ -439,9 +439,11 @@ const app = Vue.createApp({
         }
     },
     watch: {
-        // 다크모드 변수 감지 시 HTML 테마 속성 변경
         isDark(newVal) {
             document.documentElement.setAttribute('data-bs-theme', newVal ? 'dark' : 'light');
+            if(this.currentTab === 'stats') {
+                this.drawCharts(); 
+            }
         }
     },
     methods: {
@@ -451,7 +453,6 @@ const app = Vue.createApp({
         formatNumber(num) {
             return Number(num).toLocaleString('ko-KR');
         },
-        // 💰 천단위 콤마 숫자 추출
         updateFormAmount(e) {
             let val = e.target.value.replace(/[^0-9]/g, '');
             this.form.amount = val ? Number(val) : '';
@@ -461,7 +462,6 @@ const app = Vue.createApp({
             this.editForm.amount = val ? Number(val) : '';
         },
 
-        // 🔄 내역 빠른 복사 기능
         copyRecord(r) {
             this.form.amount = r.amount;
             this.form.category = r.category;
@@ -472,9 +472,8 @@ const app = Vue.createApp({
             this.changeTab('input');
         },
 
-        // 📥 엑셀 CSV 다운로드
         downloadCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 한글 깨짐 방지 BOM 추가
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
             csvContent += "ID,날짜,대분류,상세항목,금액,결제수단,고정비여부,메모\n";
             
             this.records.forEach(r => {
@@ -570,7 +569,11 @@ const app = Vue.createApp({
         cancelEdit() {
             this.editingRecordId = null;
         },
+        
+        // 🚨 수정(저장) 버튼을 누를 때 재확인하는 안전장치 추가됨
         async saveRecordEdit() {
+            if(!confirm('수정한 내용을 저장하시겠습니까?')) return;
+            
             this.isLoading = true;
             const idx = this.records.findIndex(r => r.id === this.editingRecordId);
             if(idx > -1) {
@@ -587,8 +590,10 @@ const app = Vue.createApp({
             await this.fetchData();
         },
 
+        // 🚨 삭제 버튼을 누를 때 재확인하는 안전장치 (기존 유지)
         async deleteRecord(id) {
             if(!confirm('정말 삭제하시겠습니까?')) return;
+            
             this.isLoading = true;
             this.records = this.records.filter(r => String(r.id) !== String(id));
             const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
@@ -612,12 +617,16 @@ const app = Vue.createApp({
             await this.syncTemplates();
             this.newTemplate = { category: '', sub_category: '', default_amount: '', default_payment: '', memo: '' };
         },
+        
+        // 🚨 템플릿 삭제 버튼을 누를 때 재확인하는 안전장치 (기존 유지)
         async deleteTemplate(id) {
             if(!confirm('템플릿을 삭제하시겠습니까?')) return;
+            
             this.isLoading = true;
             this.fixedTemplates = this.fixedTemplates.filter(t => t.id !== id);
             await this.syncTemplates();
         },
+        
         async syncTemplates() {
             const headers = ["id", "category", "sub_category", "default_amount", "default_payment", "memo"];
             const dataToSave = [headers, ...this.fixedTemplates.map(t => [t.id, t.category, t.sub_category, t.default_amount, t.default_payment, t.memo])];
@@ -627,6 +636,7 @@ const app = Vue.createApp({
             });
             await this.fetchData();
         },
+        
         async executeBatch() {
             if(this.selectedTemplates.length === 0) return alert('등록할 항목을 체크해주세요.');
             this.isLoading = true;
@@ -666,7 +676,7 @@ const app = Vue.createApp({
         },
 
         drawCharts() {
-            const fontColor = this.isDark ? '#e2e8f0' : '#1a202c'; // 다크모드 차트 글씨색
+            const fontColor = this.isDark ? '#e2e8f0' : '#1a202c'; 
             const vibrantColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#EA6B66', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC'];
             
             let pieData = [{
@@ -694,7 +704,6 @@ const app = Vue.createApp({
 
             let traces = [];
             
-            // 항목별 스택 바
             this.expenseCategories.forEach((cat, idx) => {
                 let yValues = months.map(m => trendData[m] ? (trendData[m][cat]||0) : 0);
                 if(yValues.some(v => v > 0)) {
@@ -706,13 +715,12 @@ const app = Vue.createApp({
                 }
             });
 
-            // 📈 추가됨: 차트 맨 위에 월별 총 금액을 깔끔하게 보여주는 보이지 않는 레이어
             let totalSums = months.map(m => trendData[m] ? Object.values(trendData[m]).reduce((a,b)=>a+b, 0) : 0);
             traces.push({
                 x: months, y: totalSums, type: 'scatter', mode: 'text',
                 text: totalSums.map(v => v > 0 ? v.toLocaleString() + '원' : ''),
                 textposition: 'top center', showlegend: false, hoverinfo: 'skip',
-                textfont: { color: this.isDark ? '#cbd5e1' : '#312e81', weight: 'bold', size: 13 }
+                textfont: { color: this.isDark ? '#e2e8f0' : '#312e81', weight: 'bold', size: 13 }
             });
 
             let barLayout = { 
@@ -721,7 +729,6 @@ const app = Vue.createApp({
                 legend: {orientation: 'h', y: -0.2, font: { color: fontColor }},
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
-                // 📈 가로축 년-월 텍스트 강제 고정 (영어 표시 제거)
                 xaxis: { type: 'category', tickfont: { color: fontColor }, showgrid: false },
                 yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0' }
             };
