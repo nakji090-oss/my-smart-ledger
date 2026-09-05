@@ -12,7 +12,6 @@
         body { background-color: #f0f2f5; font-family: 'Pretendard', sans-serif; padding-bottom: 80px; padding-top: 15px;}
         .card { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: #ffffff; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); display: flex; z-index: 1000; padding-bottom: env(safe-area-inset-bottom); }
-        /* 메뉴가 5개로 늘어났으므로 폰트와 간격을 모바일에 맞게 조절 */
         .nav-item { flex: 1; text-align: center; padding: 12px 0; font-size: 12px; font-weight: 700; color: #a0aec0; cursor: pointer; transition: 0.2s; }
         .nav-item.active { color: #4f46e5; border-top: 3px solid #4f46e5; background: #f8faff; }
         .form-control, .form-select { border-radius: 10px; font-size: 15px; }
@@ -66,7 +65,7 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted small fw-bold">메모 / 사용처</label>
-                    <input type="text" v-model="form.memo" class="form-control py-2" placeholder="예: 스타벅스">
+                    <input type="text" v-model="form.memo" class="form-control py-2" placeholder="예: 사용처">
                 </div>
                 <div class="form-check mb-4 mt-2">
                     <input class="form-check-input" type="checkbox" v-model="form.is_fixed" id="isFixed">
@@ -108,7 +107,6 @@
             <h6 class="fw-bold mt-4">🛒 변동지출 카테고리 비중</h6>
             <div id="pieChart" style="height: 300px; margin-bottom: 10px;"></div>
             
-            <!-- 새로 추가된 카테고리별 상세 총액 리스트 -->
             <div class="row g-2 mb-4">
                 <div class="col-6" v-for="(stat, index) in varCategoryStats" :key="index">
                     <div class="cat-stat-box">
@@ -123,7 +121,7 @@
             
             <hr class="my-4">
             
-            <h5 class="fw-bold mb-3">📈 월별 변동지출 추이 (MoM)</h5>
+            <h5 class="fw-bold mb-3">📈 최근 6개월 변동지출 추이</h5>
             <div id="barChart" style="height: 350px;"></div>
         </div>
     </div>
@@ -152,7 +150,6 @@
                     </thead>
                     <tbody>
                         <tr v-for="r in sortedRecords" :key="r.id">
-                            <!-- 수정 모드일 때 보여지는 화면 (인라인 에디터) -->
                             <td colspan="4" v-if="editingRecordId === r.id" class="bg-light p-3 rounded">
                                 <div class="row g-2">
                                     <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm"></div>
@@ -174,7 +171,6 @@
                                     </div>
                                 </div>
                             </td>
-                            <!-- 기본 내역 보여주는 화면 -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
                                 <td>{{ r.category }}<br><span class="text-muted" style="font-size:11px;">{{ r.sub_category || r.memo }}</span></td>
@@ -194,7 +190,7 @@
         </div>
     </div>
 
-    <!-- 4. 고정비 일괄등록 탭 (새로 복구됨) -->
+    <!-- 4. 고정비 일괄등록 탭 -->
     <div v-show="currentTab === 'fixed'">
         <div class="card p-3">
             <h5 class="fw-bold mb-3">📌 정기 고정비 일괄 등록</h5>
@@ -265,7 +261,7 @@
         </div>
     </div>
 
-    <!-- 하단 네비게이션 바 (메뉴 5개 적용) -->
+    <!-- 하단 네비게이션 바 -->
     <div class="bottom-nav">
         <div class="nav-item" :class="{active: currentTab === 'input'}" @click="changeTab('input')">📝 입력</div>
         <div class="nav-item" :class="{active: currentTab === 'stats'}" @click="changeTab('stats')">📊 분석</div>
@@ -277,9 +273,6 @@
 </div>
 
 <script>
-// =========================================================================
-// 🚨 선생님의 완벽한 구글 스크립트 연결 주소입니다. (수정하지 않으셔도 됩니다!)
-// =========================================================================
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwZY8pgr3jts0HV3U4X-9usjvECcqkOOK4048Kcth5pErk_cpc1STaP8fumaxyP4Jdx/exec";
 
 const app = Vue.createApp({
@@ -296,11 +289,9 @@ const app = Vue.createApp({
                 amount: '', category: '', sub_category: '', payment_method: '', is_fixed: false, memo: ''
             },
             
-            // 내역 수정(Edit)용 변수
             editingRecordId: null,
             editForm: {},
 
-            // 고정비 일괄등록용 변수
             batchDate: new Date().toISOString().split('T')[0],
             selectedTemplates: [],
             newTemplate: { category: '', sub_category: '', default_amount: '', default_payment: '', memo: '' },
@@ -331,13 +322,12 @@ const app = Vue.createApp({
         monthlyFixed() { return this.currentMonthRecords.filter(r => r.is_fixed == 1 || r.is_fixed === 'TRUE' || r.is_fixed === true).reduce((sum, r) => sum + Number(r.amount), 0); },
         monthlyVar() { return this.monthlyTotal - this.monthlyFixed; },
         
-        // 새로 추가됨: 카테고리별 변동지출 총액 계산 및 정렬
         varCategoryStats() {
             let varRecords = this.currentMonthRecords.filter(r => r.is_fixed == 0 || r.is_fixed === 'FALSE' || r.is_fixed === false);
             let catSums = {};
             varRecords.forEach(r => { catSums[r.category] = (catSums[r.category]||0) + Number(r.amount); });
             let stats = Object.keys(catSums).map(k => ({ name: k, amount: catSums[k] }));
-            stats.sort((a,b) => b.amount - a.amount); // 금액 큰 순 정렬
+            stats.sort((a,b) => b.amount - a.amount);
             return stats;
         },
         
@@ -383,14 +373,12 @@ const app = Vue.createApp({
                     this.settings = this.parseSheetData(res.settings);
                     this.fixedTemplates = this.parseSheetData(res.fixed_templates);
                     
-                    // 기본값 셋팅
                     if(this.expenseCategories.length > 0 && !this.form.category) this.form.category = this.expenseCategories[0];
                     if(this.paymentMethods.length > 0 && !this.form.payment_method) this.form.payment_method = this.paymentMethods[0];
                     
                     this.settingsExpText = this.expenseCategories.join('\n');
                     this.settingsPayText = this.paymentMethods.join('\n');
                     
-                    // 고정비 템플릿 기본 전체 선택
                     this.selectedTemplates = this.fixedTemplates.map(t => t.id);
                 }
             } catch(e) {
@@ -420,7 +408,6 @@ const app = Vue.createApp({
             this.isLoading = false;
         },
         
-        // ✏️ 인라인 에디터 시작
         startEdit(record) {
             this.editingRecordId = record.id;
             this.editForm = { ...record };
@@ -431,12 +418,10 @@ const app = Vue.createApp({
         },
         async saveRecordEdit() {
             this.isLoading = true;
-            // 배열 내 수정
             const idx = this.records.findIndex(r => r.id === this.editingRecordId);
             if(idx > -1) {
                 this.records[idx] = { ...this.editForm, is_fixed: this.editForm.is_fixed ? 1 : 0 };
             }
-            // 구글 시트에 덮어쓰기
             const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
             const dataToSave = [headers, ...this.records.map(r => [r.id, r.date, r.category, r.sub_category, r.amount, r.payment_method, r.is_fixed, r.memo])];
             
@@ -462,7 +447,6 @@ const app = Vue.createApp({
             await this.fetchData();
         },
 
-        // 📌 고정비 관련 로직
         async addTemplate() {
             if(!this.newTemplate.category || !this.newTemplate.default_amount) return alert('카테고리와 금액을 입력해주세요.');
             this.isLoading = true;
@@ -528,7 +512,6 @@ const app = Vue.createApp({
         },
 
         drawCharts() {
-            // 1. 파이 차트 (변동지출 비중 - 알록달록한 색상 적용)
             const vibrantColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#EA6B66', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC'];
             
             let pieData = [{
@@ -541,8 +524,7 @@ const app = Vue.createApp({
             let pieLayout = { margin: {t:10, b:10, l:10, r:10}, showlegend: false };
             Plotly.newPlot('pieChart', pieData, pieLayout, {displayModeBar: false});
 
-            // 2. 바 차트 (최근 6개월 변동지출 추이)
-            let months = [...this.availableMonths].reverse().slice(-6); // 최신 6개월
+            let months = [...this.availableMonths].reverse().slice(-6);
             let trendData = {};
             
             this.records.forEach(r => {
@@ -561,7 +543,7 @@ const app = Vue.createApp({
                     traces.push({ 
                         x: months, y: yValues, name: cat, type: 'bar', 
                         text: yValues, textposition: 'inside', texttemplate: '%{y:,}',
-                        marker: { color: vibrantColors[idx % vibrantColors.length] } // 바 차트도 색상 통일
+                        marker: { color: vibrantColors[idx % vibrantColors.length] }
                     });
                 }
             });
