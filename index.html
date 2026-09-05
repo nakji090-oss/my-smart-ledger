@@ -316,7 +316,14 @@
     <!-- 5. 관리 탭 -->
     <div v-show="currentTab === 'settings'">
         <div class="card p-4">
-            <h5 class="fw-bold mb-4 text-body">⚙️ 카테고리 / 결제수단 관리</h5>
+            <h5 class="fw-bold mb-4 text-body">⚙️ 설정 및 데이터 관리</h5>
+            
+            <!-- 🔗 구글 시트 원본 바로가기 버튼 -->
+            <h6 class="fw-bold text-body">🔗 데이터 원본(금고) 확인</h6>
+            <a :href="googleSheetUrl" target="_blank" class="btn btn-outline-success w-100 fw-bold py-2 mb-4">
+                📊 구글 스프레드시트 바로가기
+            </a>
+
             <div class="alert alert-info small">💡 텍스트 박스 안에서 줄바꿈으로 추가/삭제/순서변경 후 아래 저장 버튼을 누르세요.</div>
             
             <label class="form-label fw-bold mt-2 text-body">🛒 지출 카테고리</label>
@@ -343,16 +350,21 @@
 <script>
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwZY8pgr3jts0HV3U4X-9usjvECcqkOOK4048Kcth5pErk_cpc1STaP8fumaxyP4Jdx/exec";
 
+// 🔗 구글 시트 바로가기 주소 반영 완료
+const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1UHo6FAzUb2-aYMRXoOdw82DDjMEcEidg1qyHW8NuLR4/edit?usp=drivesdk";
+
 const app = Vue.createApp({
     data() {
         return {
             isLoading: true,
-            isDark: false, // 🌙 다크모드 변수
+            isDark: false, 
             currentTab: 'input',
             records: [],
             settings: [],
             fixedTemplates: [],
             
+            googleSheetUrl: GOOGLE_SHEET_URL,
+
             form: {
                 date: new Date().toISOString().split('T')[0],
                 amount: '', category: '', sub_category: '', payment_method: '', is_fixed: false, memo: ''
