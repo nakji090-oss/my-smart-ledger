@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>스마트 가계부</title>
     
-    <!-- 📱 바탕화면 바로가기 전용 아이콘 설정 -->
+    <!-- 📱 바탕화면 바로가기 전용 아이콘 및 앱 신분증(Manifest) 설정 -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2936/2936758.png">
     <link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/512/2936/2936758.png">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.json"> <!-- 👈 이 줄이 추가되었습니다! -->
+    <link rel="manifest" href="manifest.json">
 
     <!-- 디자인(Bootstrap) 및 기능(Vue3, Plotly) 라이브러리 로드 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -570,11 +570,8 @@ const app = Vue.createApp({
         cancelEdit() {
             this.editingRecordId = null;
         },
-        
-        // 🚨 수정(저장) 버튼을 누를 때 재확인하는 안전장치 추가됨
         async saveRecordEdit() {
             if(!confirm('수정한 내용을 저장하시겠습니까?')) return;
-            
             this.isLoading = true;
             const idx = this.records.findIndex(r => r.id === this.editingRecordId);
             if(idx > -1) {
@@ -591,10 +588,8 @@ const app = Vue.createApp({
             await this.fetchData();
         },
 
-        // 🚨 삭제 버튼을 누를 때 재확인하는 안전장치 (기존 유지)
         async deleteRecord(id) {
             if(!confirm('정말 삭제하시겠습니까?')) return;
-            
             this.isLoading = true;
             this.records = this.records.filter(r => String(r.id) !== String(id));
             const headers = ["id", "date", "category", "sub_category", "amount", "payment_method", "is_fixed", "memo"];
@@ -618,16 +613,12 @@ const app = Vue.createApp({
             await this.syncTemplates();
             this.newTemplate = { category: '', sub_category: '', default_amount: '', default_payment: '', memo: '' };
         },
-        
-        // 🚨 템플릿 삭제 버튼을 누를 때 재확인하는 안전장치 (기존 유지)
         async deleteTemplate(id) {
             if(!confirm('템플릿을 삭제하시겠습니까?')) return;
-            
             this.isLoading = true;
             this.fixedTemplates = this.fixedTemplates.filter(t => t.id !== id);
             await this.syncTemplates();
         },
-        
         async syncTemplates() {
             const headers = ["id", "category", "sub_category", "default_amount", "default_payment", "memo"];
             const dataToSave = [headers, ...this.fixedTemplates.map(t => [t.id, t.category, t.sub_category, t.default_amount, t.default_payment, t.memo])];
@@ -637,7 +628,6 @@ const app = Vue.createApp({
             });
             await this.fetchData();
         },
-        
         async executeBatch() {
             if(this.selectedTemplates.length === 0) return alert('등록할 항목을 체크해주세요.');
             this.isLoading = true;
@@ -742,5 +732,13 @@ const app = Vue.createApp({
 });
 app.mount('#app');
 </script>
+
+<!-- 🚨 꼬리표 떼기(앱 설치)를 위한 서비스 워커 등록 -->
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+
 </body>
 </html>
