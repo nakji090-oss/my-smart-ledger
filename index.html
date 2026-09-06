@@ -175,29 +175,37 @@
                 <button @click="downloadCSV" class="btn btn-sm btn-dark fw-bold px-3">📥 엑셀 백업</button>
             </div>
             
+            <!-- 🚨 기능 헷갈림 방지를 위해 각 칸에 이름표(라벨) 달기 -->
             <div class="row g-2 mb-3">
                 <div class="col-4">
-                    <select v-model="historyFilterMonth" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
-                        <option value="전체 월">📅 전체 월</option>
+                    <div class="small fw-bold text-muted mb-1" style="font-size: 11px;">📅 기간 필터</div>
+                    <select v-model="historyFilterMonth" class="form-select form-select-sm bg-body-tertiary text-body fw-bold">
+                        <option value="전체 월">전체 월</option>
                         <option v-for="m in availableMonths" :value="m">{{ m }}</option>
                     </select>
                 </div>
                 <div class="col-4">
-                    <select v-model="historyFilterCat" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
-                        <option value="">📂 전 항목</option>
+                    <!-- 필터임을 명확히 강조 -->
+                    <div class="small fw-bold text-muted mb-1" style="font-size: 11px;">📂 항목만 보기</div>
+                    <select v-model="historyFilterCat" class="form-select form-select-sm bg-body-tertiary text-body fw-bold">
+                        <option value="">전체 항목</option>
                         <option v-for="cat in expenseCategories" :value="cat">{{ cat }}</option>
                     </select>
                 </div>
                 <div class="col-4">
-                    <select v-model="historySort" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
-                        <option value="date_desc">📅 최신순</option>
-                        <option value="date_asc">📅 과거순</option>
-                        <option value="amt_desc">💰 금액순</option>
-                        <option value="cat_asc">🏷️ 항목 정렬</option>
+                    <!-- 정렬임을 명확히 강조 -->
+                    <div class="small fw-bold text-primary mb-1" style="font-size: 11px;">🔃 줄세우기(정렬)</div>
+                    <select v-model="historySort" class="form-select form-select-sm bg-body-tertiary text-body fw-bold border-primary">
+                        <option value="date_desc">최신순</option>
+                        <option value="date_asc">과거순</option>
+                        <option value="amt_desc">금액 큰 순</option>
+                        <option value="cat_asc">항목별(최신순)</option>
+                        <!-- 🚨 새로 추가된 '항목별 금액별 정렬' 기능 -->
+                        <option value="cat_amt">항목별(금액순)</option>
                     </select>
                 </div>
-                <div class="col-12">
-                    <input type="text" v-model="historySearchKw" class="form-control bg-body-tertiary text-body" placeholder="🔎 검색 (상세 항목이나 사용처 입력)" style="font-size: 13px;">
+                <div class="col-12 mt-2">
+                    <input type="text" v-model="historySearchKw" class="form-control form-control-sm bg-body-tertiary text-body py-2" placeholder="🔎 검색 (상세 항목이나 사용처 입력)" style="font-size: 13px;">
                 </div>
             </div>
 
@@ -218,7 +226,7 @@
                     <tbody>
                         <tr v-for="r in sortedRecords" :key="r.id">
                             
-                            <!-- ✏️ 인라인 에디터 (메모 수정칸 추가됨) -->
+                            <!-- ✏️ 인라인 에디터 -->
                             <td colspan="4" v-if="editingRecordId === r.id" class="bg-body-tertiary p-3 rounded border">
                                 <div class="row g-2">
                                     <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm bg-body text-body"></div>
@@ -234,7 +242,6 @@
                                             <option v-for="pay in paymentMethods">{{pay}}</option>
                                         </select>
                                     </div>
-                                    <!-- 메모 수정 입력칸 추가 -->
                                     <div class="col-6">
                                         <input type="text" v-model="editForm.memo" class="form-control form-control-sm bg-body text-body" placeholder="메모">
                                     </div>
@@ -245,13 +252,12 @@
                                 </div>
                             </td>
                             
-                            <!-- 📋 일반 목록 보기 (상세항목과 메모 모두 표시) -->
+                            <!-- 📋 일반 목록 보기 -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
                                 <td>
                                     <span class="fw-bold">{{ r.category }}</span><br>
                                     <span class="text-muted" style="font-size:11.5px;">
-                                        <!-- 상세항목이 있으면 괄호로 묶어주고 뒤에 메모를 붙여서 출력 -->
                                         <span v-if="r.sub_category">[{{ r.sub_category }}] </span>{{ r.memo }}
                                     </span>
                                 </td>
@@ -437,12 +443,15 @@ const app = Vue.createApp({
         sortedRecords() {
             let filtered = [...this.records];
             
+            // 1. 월 필터
             if (this.historyFilterMonth !== '전체 월') {
                 filtered = filtered.filter(r => String(r.date).startsWith(this.historyFilterMonth));
             }
+            // 2. 카테고리 '필터' (선택한 것만 보여주기)
             if (this.historyFilterCat) {
                 filtered = filtered.filter(r => r.category === this.historyFilterCat);
             }
+            // 3. 검색어 필터
             if (this.historySearchKw.trim()) {
                 const kw = this.historySearchKw.trim().toLowerCase();
                 filtered = filtered.filter(r => 
@@ -451,16 +460,26 @@ const app = Vue.createApp({
                 );
             }
             
+            // 4. 리스트 '정렬' (줄 세우기)
             if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
+            
+            // 🚨 [항목별 정렬 (최신순)] : 같은 항목끼리 묶은 뒤, 그 안에서 최신순
             if(this.historySort === 'cat_asc') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
                     if (catCmp !== 0) return catCmp; 
-                    const subCmp = String(a.sub_category || '').localeCompare(String(b.sub_category || ''));
-                    if (subCmp !== 0) return subCmp; 
                     return String(b.date).localeCompare(String(a.date)); 
+                });
+            }
+            
+            // 🚨 [항목별 정렬 (금액순)] : 같은 항목끼리 묶은 뒤, 그 안에서 금액 큰 순!
+            if(this.historySort === 'cat_amt') {
+                filtered.sort((a,b) => {
+                    const catCmp = String(a.category).localeCompare(String(b.category));
+                    if (catCmp !== 0) return catCmp; 
+                    return Number(b.amount) - Number(a.amount); 
                 });
             }
             
