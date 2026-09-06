@@ -190,10 +190,10 @@
                 </div>
                 <div class="col-4">
                     <select v-model="historySort" class="form-select bg-body-tertiary text-body fw-bold" style="font-size: 13px;">
-                        <option value="date_desc">최신순</option>
-                        <option value="date_asc">과거순</option>
-                        <option value="amt_desc">금액순</option>
-                        <option value="cat_asc">가나다순</option>
+                        <option value="date_desc">📅 최신순</option>
+                        <option value="date_asc">📅 과거순</option>
+                        <option value="amt_desc">💰 금액순</option>
+                        <option value="cat_asc">🏷️ 항목 정렬</option>
                     </select>
                 </div>
                 <div class="col-12">
@@ -436,10 +436,19 @@ const app = Vue.createApp({
                 );
             }
             
+            // 🚨 완벽하게 개선된 항목(카테고리)별 정렬 로직
             if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
-            if(this.historySort === 'cat_asc') filtered.sort((a,b) => String(a.category).localeCompare(String(b.category)) || String(b.date).localeCompare(String(a.date)));
+            if(this.historySort === 'cat_asc') {
+                filtered.sort((a,b) => {
+                    const catCmp = String(a.category).localeCompare(String(b.category));
+                    if (catCmp !== 0) return catCmp; // 1. 큰 카테고리 비교
+                    const subCmp = String(a.sub_category || '').localeCompare(String(b.sub_category || ''));
+                    if (subCmp !== 0) return subCmp; // 2. 상세 카테고리 비교
+                    return String(b.date).localeCompare(String(a.date)); // 3. 같은 카테고리면 최신순
+                });
+            }
             
             return filtered;
         },
@@ -717,23 +726,22 @@ const app = Vue.createApp({
 
             let totalSums = months.map(m => trendData[m] ? Object.values(trendData[m]).reduce((a,b)=>a+b, 0) : 0);
             
-            // 📈 상단 총금액 글자를 훨씬 굵고 선명하게(bold), 여유 있게 배치
             traces.push({
                 x: months, y: totalSums, type: 'scatter', mode: 'text',
                 text: totalSums.map(v => v > 0 ? v.toLocaleString() + '원' : ''),
                 textposition: 'top center', showlegend: false, hoverinfo: 'skip',
                 textfont: { color: this.isDark ? '#ffffff' : '#1e1b4b', family: 'Pretendard, sans-serif', size: 14 },
-                cliponaxis: false // 글자가 잘리지 않도록 강제 허용
+                cliponaxis: false 
             });
 
             let barLayout = { 
                 barmode: 'stack', 
-                margin: {t: 50, b: 30, l: 40, r: 10}, // 📈 위쪽 여백을 50으로 넉넉하게 확장
+                margin: {t: 50, b: 30, l: 40, r: 10}, 
                 legend: {orientation: 'h', y: -0.2, font: { color: fontColor }},
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
                 xaxis: { type: 'category', tickfont: { color: fontColor }, showgrid: false },
-                yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0', range: [0, Math.max(...totalSums, 100000) * 1.15] } // 📈 최고점 위로 15% 여유 공간 추가
+                yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0', range: [0, Math.max(...totalSums, 100000) * 1.15] }
             };
             Plotly.newPlot('barChart', traces, barLayout, {displayModeBar: false});
         }
