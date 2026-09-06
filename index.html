@@ -217,7 +217,9 @@
                     </thead>
                     <tbody>
                         <tr v-for="r in sortedRecords" :key="r.id">
-                            <td colspan="4" v-if="editingRecordId === r.id" class="bg-body-tertiary p-3 rounded">
+                            
+                            <!-- ✏️ 인라인 에디터 (메모 수정칸 추가됨) -->
+                            <td colspan="4" v-if="editingRecordId === r.id" class="bg-body-tertiary p-3 rounded border">
                                 <div class="row g-2">
                                     <div class="col-6"><input type="date" v-model="editForm.date" class="form-control form-control-sm bg-body text-body"></div>
                                     <div class="col-6"><input type="text" :value="formattedEditAmount" @input="updateEditAmount" class="form-control form-control-sm text-primary fw-bold bg-body"></div>
@@ -232,15 +234,27 @@
                                             <option v-for="pay in paymentMethods">{{pay}}</option>
                                         </select>
                                     </div>
-                                    <div class="col-6 text-end">
+                                    <!-- 메모 수정 입력칸 추가 -->
+                                    <div class="col-6">
+                                        <input type="text" v-model="editForm.memo" class="form-control form-control-sm bg-body text-body" placeholder="메모">
+                                    </div>
+                                    <div class="col-12 text-end mt-2">
                                         <button @click="saveRecordEdit" class="btn btn-sm btn-success fw-bold me-1">저장</button>
                                         <button @click="cancelEdit" class="btn btn-sm btn-secondary fw-bold">취소</button>
                                     </div>
                                 </div>
                             </td>
+                            
+                            <!-- 📋 일반 목록 보기 (상세항목과 메모 모두 표시) -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
-                                <td>{{ r.category }}<br><span class="text-muted" style="font-size:11px;">{{ r.sub_category || r.memo }}</span></td>
+                                <td>
+                                    <span class="fw-bold">{{ r.category }}</span><br>
+                                    <span class="text-muted" style="font-size:11.5px;">
+                                        <!-- 상세항목이 있으면 괄호로 묶어주고 뒤에 메모를 붙여서 출력 -->
+                                        <span v-if="r.sub_category">[{{ r.sub_category }}] </span>{{ r.memo }}
+                                    </span>
+                                </td>
                                 <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
                                 <td class="text-center p-1" style="white-space: nowrap;">
                                     <button @click="copyRecord(r)" class="btn btn-sm btn-outline-info px-2 py-0 me-1" title="이 내역으로 새 지출 작성">📑</button>
@@ -248,6 +262,7 @@
                                     <button @click="deleteRecord(r.id)" class="btn btn-sm btn-outline-danger px-2 py-0" title="삭제">🗑️</button>
                                 </td>
                             </template>
+                            
                         </tr>
                         <tr v-if="sortedRecords.length === 0">
                             <td colspan="4" class="text-center text-muted py-4">조건에 맞는 내역이 없습니다.</td>
@@ -436,17 +451,16 @@ const app = Vue.createApp({
                 );
             }
             
-            // 🚨 완벽하게 개선된 항목(카테고리)별 정렬 로직
             if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
             if(this.historySort === 'cat_asc') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
-                    if (catCmp !== 0) return catCmp; // 1. 큰 카테고리 비교
+                    if (catCmp !== 0) return catCmp; 
                     const subCmp = String(a.sub_category || '').localeCompare(String(b.sub_category || ''));
-                    if (subCmp !== 0) return subCmp; // 2. 상세 카테고리 비교
-                    return String(b.date).localeCompare(String(a.date)); // 3. 같은 카테고리면 최신순
+                    if (subCmp !== 0) return subCmp; 
+                    return String(b.date).localeCompare(String(a.date)); 
                 });
             }
             
