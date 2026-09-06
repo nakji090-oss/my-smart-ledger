@@ -175,7 +175,6 @@
                 <button @click="downloadCSV" class="btn btn-sm btn-dark fw-bold px-3">📥 엑셀 백업</button>
             </div>
             
-            <!-- 🚨 기능 헷갈림 방지를 위해 각 칸에 이름표(라벨) 달기 -->
             <div class="row g-2 mb-3">
                 <div class="col-4">
                     <div class="small fw-bold text-muted mb-1" style="font-size: 11px;">📅 기간 필터</div>
@@ -185,7 +184,6 @@
                     </select>
                 </div>
                 <div class="col-4">
-                    <!-- 필터임을 명확히 강조 -->
                     <div class="small fw-bold text-muted mb-1" style="font-size: 11px;">📂 항목만 보기</div>
                     <select v-model="historyFilterCat" class="form-select form-select-sm bg-body-tertiary text-body fw-bold">
                         <option value="">전체 항목</option>
@@ -193,14 +191,12 @@
                     </select>
                 </div>
                 <div class="col-4">
-                    <!-- 정렬임을 명확히 강조 -->
                     <div class="small fw-bold text-primary mb-1" style="font-size: 11px;">🔃 줄세우기(정렬)</div>
                     <select v-model="historySort" class="form-select form-select-sm bg-body-tertiary text-body fw-bold border-primary">
                         <option value="date_desc">최신순</option>
                         <option value="date_asc">과거순</option>
                         <option value="amt_desc">금액 큰 순</option>
                         <option value="cat_asc">항목별(최신순)</option>
-                        <!-- 🚨 새로 추가된 '항목별 금액별 정렬' 기능 -->
                         <option value="cat_amt">항목별(금액순)</option>
                     </select>
                 </div>
@@ -252,14 +248,13 @@
                                 </div>
                             </td>
                             
-                            <!-- 📋 일반 목록 보기 -->
+                            <!-- 📋 일반 목록 보기 (메모 줄바꿈 적용) -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
                                 <td>
-                                    <span class="fw-bold">{{ r.category }}</span><br>
-                                    <span class="text-muted" style="font-size:11.5px;">
-                                        <span v-if="r.sub_category">[{{ r.sub_category }}] </span>{{ r.memo }}
-                                    </span>
+                                    <div class="fw-bold">{{ r.category }}</div>
+                                    <div v-if="r.sub_category" class="text-secondary" style="font-size:11.5px;">[{{ r.sub_category }}]</div>
+                                    <div v-if="r.memo" class="text-muted" style="font-size:11px; margin-top: 2px;">{{ r.memo }}</div>
                                 </td>
                                 <td class="text-end fw-bold">{{ formatNumber(r.amount) }}</td>
                                 <td class="text-center p-1" style="white-space: nowrap;">
@@ -465,7 +460,7 @@ const app = Vue.createApp({
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
             
-            // 🚨 [항목별 정렬 (최신순)] : 같은 항목끼리 묶은 뒤, 그 안에서 최신순
+            // [항목별 정렬 (최신순)]
             if(this.historySort === 'cat_asc') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
@@ -474,7 +469,7 @@ const app = Vue.createApp({
                 });
             }
             
-            // 🚨 [항목별 정렬 (금액순)] : 같은 항목끼리 묶은 뒤, 그 안에서 금액 큰 순!
+            // [항목별 정렬 (금액순)]
             if(this.historySort === 'cat_amt') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
