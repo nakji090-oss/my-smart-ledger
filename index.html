@@ -248,7 +248,7 @@
                                 </div>
                             </td>
                             
-                            <!-- 📋 일반 목록 보기 (메모 줄바꿈 적용) -->
+                            <!-- 📋 일반 목록 보기 -->
                             <template v-else>
                                 <td>{{ r.date.substring(5) }}</td>
                                 <td>
@@ -438,15 +438,12 @@ const app = Vue.createApp({
         sortedRecords() {
             let filtered = [...this.records];
             
-            // 1. 월 필터
             if (this.historyFilterMonth !== '전체 월') {
                 filtered = filtered.filter(r => String(r.date).startsWith(this.historyFilterMonth));
             }
-            // 2. 카테고리 '필터' (선택한 것만 보여주기)
             if (this.historyFilterCat) {
                 filtered = filtered.filter(r => r.category === this.historyFilterCat);
             }
-            // 3. 검색어 필터
             if (this.historySearchKw.trim()) {
                 const kw = this.historySearchKw.trim().toLowerCase();
                 filtered = filtered.filter(r => 
@@ -455,12 +452,10 @@ const app = Vue.createApp({
                 );
             }
             
-            // 4. 리스트 '정렬' (줄 세우기)
             if(this.historySort === 'date_desc') filtered.sort((a,b) => String(b.date).localeCompare(String(a.date)) || b.id - a.id);
             if(this.historySort === 'date_asc') filtered.sort((a,b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id);
             if(this.historySort === 'amt_desc') filtered.sort((a,b) => Number(b.amount) - Number(a.amount));
             
-            // [항목별 정렬 (최신순)]
             if(this.historySort === 'cat_asc') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
@@ -469,7 +464,6 @@ const app = Vue.createApp({
                 });
             }
             
-            // [항목별 정렬 (금액순)]
             if(this.historySort === 'cat_amt') {
                 filtered.sort((a,b) => {
                     const catCmp = String(a.category).localeCompare(String(b.category));
@@ -716,6 +710,7 @@ const app = Vue.createApp({
             const fontColor = this.isDark ? '#e2e8f0' : '#1a202c'; 
             const vibrantColors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#EA6B66', '#73C0DE', '#3BA272', '#FC8452', '#9A60B4', '#EA7CCC'];
             
+            // 🚨 원형 그래프 고정 및 드래그 방지 추가
             let pieData = [{
                 values: this.varCategoryStats.map(s => s.amount),
                 labels: this.varCategoryStats.map(s => s.name),
@@ -724,7 +719,12 @@ const app = Vue.createApp({
                 marker: { colors: vibrantColors },
                 textfont: { color: fontColor }
             }];
-            let pieLayout = { margin: {t:10, b:10, l:10, r:10}, showlegend: false, paper_bgcolor: 'transparent' };
+            let pieLayout = { 
+                margin: {t:10, b:10, l:10, r:10}, 
+                showlegend: false, 
+                paper_bgcolor: 'transparent',
+                dragmode: false // 화면 이동/터치 드래그 방지
+            };
             Plotly.newPlot('pieChart', pieData, pieLayout, {displayModeBar: false});
 
             let months = [...this.availableMonths].reverse().slice(-6);
@@ -762,14 +762,26 @@ const app = Vue.createApp({
                 cliponaxis: false 
             });
 
+            // 🚨 막대 그래프 축 확대/축소 및 드래그 차단 완벽 적용
             let barLayout = { 
                 barmode: 'stack', 
                 margin: {t: 50, b: 30, l: 40, r: 10}, 
                 legend: {orientation: 'h', y: -0.2, font: { color: fontColor }},
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: 'transparent',
-                xaxis: { type: 'category', tickfont: { color: fontColor }, showgrid: false },
-                yaxis: { tickfont: { color: fontColor }, gridcolor: this.isDark ? '#333' : '#e2e8f0', range: [0, Math.max(...totalSums, 100000) * 1.15] }
+                dragmode: false, // 터치 드래그 방지
+                xaxis: { 
+                    type: 'category', 
+                    tickfont: { color: fontColor }, 
+                    showgrid: false,
+                    fixedrange: true // X축 고정 (줌 차단)
+                },
+                yaxis: { 
+                    tickfont: { color: fontColor }, 
+                    gridcolor: this.isDark ? '#333' : '#e2e8f0', 
+                    range: [0, Math.max(...totalSums, 100000) * 1.15],
+                    fixedrange: true // Y축 고정 (줌 차단)
+                }
             };
             Plotly.newPlot('barChart', traces, barLayout, {displayModeBar: false});
         }
@@ -781,6 +793,7 @@ const app = Vue.createApp({
 app.mount('#app');
 </script>
 
+<!-- 🚨 앱 설치용 서비스 워커 -->
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
